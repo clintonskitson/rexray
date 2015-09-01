@@ -15,6 +15,9 @@ var (
 	osDrivers string
 )
 
+type OSDriverManager struct {
+}
+
 func init() {
 	debug = strings.ToUpper(os.Getenv("REXRAY_DEBUG"))
 	initOSDrivers()

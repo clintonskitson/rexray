@@ -1,17 +1,16 @@
 package scaleio
 
 import (
-	"errors"
-	"fmt"
-	"log"
-	"os"
+	log "github.com/Sirupsen/logrus"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/emccode/goscaleio"
 	types "github.com/emccode/goscaleio/types/v1"
+	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/drivers/storage"
+	"github.com/emccode/rexray/errors"
 )
 
 var (
@@ -24,60 +23,89 @@ type Driver struct {
 	ProtectionDomain *goscaleio.ProtectionDomain
 	StoragePool      *goscaleio.StoragePool
 	Sdc              *goscaleio.Sdc
+	Config           *config.Config
 }
 
-var (
-	ErrMissingVolumeID         = errors.New("Missing VolumeID")
-	ErrMultipleVolumesReturned = errors.New("Multiple Volumes returned")
-	ErrNoVolumesReturned       = errors.New("No Volumes returned")
-	ErrLocalVolumeMaps         = errors.New("Getting local volume mounts")
-)
+func ef() errors.Fields {
+	return errors.Fields{
+		"provider": providerName,
+	}
+}
+
+func eff(fields errors.Fields) map[string]interface{} {
+	errFields := map[string]interface{}{
+		"provider": providerName,
+	}
+	if fields != nil {
+		for k, v := range fields {
+			errFields[k] = v
+		}
+	}
+	return errFields
+}
 
 func init() {
 	providerName = "scaleio"
 	storagedriver.Register("scaleio", Init)
 }
 
-func Init() (storagedriver.Driver, error) {
+func Init(cfg *config.Config) (storagedriver.Driver, error) {
 
-	var (
-		username             = os.Getenv("GOSCALEIO_USERNAME")
-		password             = os.Getenv("GOSCALEIO_PASSWORD")
-		endpoint             = os.Getenv("GOSCALEIO_ENDPOINT")
-		systemID             = os.Getenv("GOSCALEIO_SYSTEMID")
-		systemName           = os.Getenv("GOSCALEIO_SYSTEM")
-		protectionDomainID   = os.Getenv("GOSCALEIO_PROTECTIONDOMAINID")
-		protectionDomainName = os.Getenv("GOSCALEIO_PROTECTIONDOMAIN")
-		storagePoolID        = os.Getenv("GOSCALEIO_STORAGEPOOLID")
-		storagePoolName      = os.Getenv("GOSCALEIO_STORAGEPOOL")
-	)
+	fields := eff(map[string]interface{}{
+		"endpoint": cfg.ScaleIoEndpoint,
+		"insecure": cfg.ScaleIoInsecure,
+		"useCerts": cfg.ScaleIoUseCerts,
+	})
 
-	client, err := goscaleio.NewClient()
+	client, err := goscaleio.NewClientWithArgs(
+		cfg.ScaleIoEndpoint,
+		cfg.ScaleIoInsecure,
+		cfg.ScaleIoUseCerts)
+
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		return nil, errors.WithFieldsE(fields,
+			"error constructing new client", err)
 	}
 
-	_, err = client.Authenticate(&goscaleio.ConfigConnect{endpoint, username, password})
+	_, err = client.Authenticate(&goscaleio.ConfigConnect{
+		cfg.ScaleIoEndpoint, cfg.ScaleIoUserName, cfg.ScaleIoPassword})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		fields["userName"] = cfg.ScaleIoUserName
+		if cfg.ScaleIoPassword != "" {
+			fields["password"] = "******"
+		}
+		return nil, errors.WithFieldsE(fields,
+			"error authenticating", err)
 	}
 
-	system, err := client.FindSystem(systemID, systemName, "")
+	system, err := client.FindSystem(
+		cfg.ScaleIoSystemId, cfg.ScaleIoSystemName, "")
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		fields["systemId"] = cfg.ScaleIoSystemId
+		fields["systemName"] = cfg.ScaleIoSystemName
+		return nil, errors.WithFieldsE(fields,
+			"error finding system", err)
 	}
 
-	pd, err := system.FindProtectionDomain(protectionDomainID, protectionDomainName, "")
+	pd, err := system.FindProtectionDomain(
+		cfg.ScaleIoProtectionDomainId, cfg.ScaleIoProtectionDomainName, "")
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		fields["domainId"] = cfg.ScaleIoProtectionDomainId
+		fields["domainName"] = cfg.ScaleIoProtectionDomainName
+		return nil, errors.WithFieldsE(fields,
+			"error finding protection domain", err)
 	}
 
 	protectionDomain := goscaleio.NewProtectionDomain(client)
 	protectionDomain.ProtectionDomain = pd
 
-	sp, err := protectionDomain.FindStoragePool(storagePoolID, storagePoolName, "")
+	sp, err := protectionDomain.FindStoragePool(
+		cfg.ScaleIoStoragePoolId, cfg.ScaleIoStoragePoolName, "")
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		fields["storagePoolId"] = cfg.ScaleIoStoragePoolId
+		fields["storagePoolName"] = cfg.ScaleIoStoragePoolName
+		return nil, errors.WithFieldsE(fields,
+			"error finding storage pool", err)
 	}
 
 	storagePool := goscaleio.NewStoragePool(client)
@@ -85,12 +113,15 @@ func Init() (storagedriver.Driver, error) {
 
 	sdcguid, err := goscaleio.GetSdcLocalGUID()
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		return nil, errors.WithFieldsE(fields,
+			"error getting sdc local guid", err)
 	}
 
 	sdc, err := system.FindSdc("SdcGuid", strings.ToUpper(sdcguid))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		fields["sdcGuid"] = sdcguid
+		return nil, errors.WithFieldsE(fields,
+			"error finding sdc", err)
 	}
 
 	driver := &Driver{
@@ -101,9 +132,8 @@ func Init() (storagedriver.Driver, error) {
 		Sdc:              sdc,
 	}
 
-	if os.Getenv("REXRAY_DEBUG") == "true" {
-		log.Println("Storage Driver Initialized: " + providerName)
-	}
+	log.WithField("providerName", providerName).Debug(
+		"storage driver initialized")
 
 	return driver, nil
 }
@@ -126,14 +156,18 @@ func (driver *Driver) GetInstance() (*storagedriver.Instance, error) {
 		Name:         server.Sdc.Name,
 	}
 
-	// log.Println("Got Instance: " + fmt.Sprintf("%+v", instance))
+	log.WithFields(log.Fields{
+		"provider": providerName,
+		"instance": instance,
+	}).Debug("got instance")
 	return instance, nil
 }
 
 func (driver *Driver) getBlockDevices() ([]*goscaleio.SdcMappedVolume, error) {
 	volumeMaps, err := goscaleio.GetLocalVolumeMap()
 	if err != nil {
-		return []*goscaleio.SdcMappedVolume{}, ErrLocalVolumeMaps
+		return []*goscaleio.SdcMappedVolume{},
+			errors.WithFieldsE(ef(), "error getting local volume map", err)
 	}
 	return volumeMaps, nil
 }
@@ -141,7 +175,8 @@ func (driver *Driver) getBlockDevices() ([]*goscaleio.SdcMappedVolume, error) {
 func (driver *Driver) GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
 	blockDevices, err := driver.getBlockDevices()
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(ef(), "error getting block devices", err)
 	}
 
 	var BlockDevices []*storagedriver.BlockDevice
@@ -157,7 +192,10 @@ func (driver *Driver) GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
 		BlockDevices = append(BlockDevices, sdBlockDevice)
 	}
 
-	// log.Println("Got Block Device Mappings: " + fmt.Sprintf("%+v", BlockDevices))
+	log.WithFields(log.Fields{
+		"provider":     providerName,
+		"blockDevices": BlockDevices,
+	}).Debug("got block device mappings")
 	return BlockDevices, nil
 }
 
@@ -226,12 +264,20 @@ func (driver *Driver) GetVolume(volumeID, volumeName string) ([]*storagedriver.V
 }
 
 func (driver *Driver) GetVolumeAttach(volumeID, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+
+	fields := eff(map[string]interface{}{
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	})
+
 	if volumeID == "" {
-		return []*storagedriver.VolumeAttachment{}, ErrMissingVolumeID
+		return []*storagedriver.VolumeAttachment{},
+			errors.WithFields(fields, "volumeId is required")
 	}
 	volume, err := driver.GetVolume(volumeID, "")
 	if err != nil {
-		return []*storagedriver.VolumeAttachment{}, err
+		return []*storagedriver.VolumeAttachment{},
+			errors.WithFieldsE(fields, "error getting volume", err)
 	}
 
 	if instanceID != "" {
@@ -274,7 +320,10 @@ func (driver *Driver) GetSnapshot(volumeID, snapshotID, snapshotName string) ([]
 		}
 	}
 
-	// log.Println("Got Snapshots: " + fmt.Sprintf("%+v", snapshotsInt))
+	log.WithFields(log.Fields{
+		"provider":  providerName,
+		"snapshots": snapshotsInt,
+	}).Debug("got snapshots")
 	return snapshotsInt, nil
 }
 
@@ -301,7 +350,10 @@ func (driver *Driver) CreateSnapshot(notUsed bool, snapshotName, volumeID, descr
 		return nil, err
 	}
 
-	// log.Println(fmt.Sprintf("Created Snapshot: %v", snapshot))
+	log.WithFields(log.Fields{
+		"provider": providerName,
+		"snapshot": snapshot,
+	}).Debug("created snapshot")
 	return snapshot, nil
 
 }
@@ -348,19 +400,27 @@ func (driver *Driver) CreateVolume(notUsed bool, volumeName string, volumeID str
 		return nil, err
 	}
 
-	// log.Println(fmt.Sprintf("Created volume: %+v", volumes[0]))
+	log.WithFields(log.Fields{
+		"provider": providerName,
+		"volume":   volumes[0],
+	}).Debug("created volume")
 	return volumes[0], nil
 
 }
 
 func (driver *Driver) RemoveVolume(volumeID string) error {
+
+	fields := eff(map[string]interface{}{
+		"volumeId": volumeID,
+	})
+
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 
 	volumes, err := driver.getVolume(volumeID, "")
 	if err != nil {
-		return err
+		return errors.WithFieldsE(fields, "error getting volume", err)
 	}
 
 	targetVolume := goscaleio.NewVolume(driver.Client)
@@ -368,10 +428,10 @@ func (driver *Driver) RemoveVolume(volumeID string) error {
 
 	err = targetVolume.RemoveVolume("ONLY_ME")
 	if err != nil {
-		return err
+		return errors.WithFieldsE(fields, "error removing volume", err)
 	}
 
-	log.Println("Deleted Volume: " + volumeID)
+	log.WithFields(fields).Debug("removed volume")
 	return nil
 }
 
@@ -389,8 +449,15 @@ func (driver *Driver) GetDeviceNextAvailable() (string, error) {
 }
 
 func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+
+	fields := eff(map[string]interface{}{
+		"runAsync":   runAsync,
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	})
+
 	if volumeID == "" {
-		return nil, ErrMissingVolumeID
+		return nil, errors.WithFields(fields, "volumeId is required")
 	}
 
 	mapVolumeSdcParam := &types.MapVolumeSdcParam{
@@ -401,11 +468,11 @@ func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) (
 
 	volumes, err := driver.getVolume(volumeID, "")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFieldsE(fields, "error getting volume", err)
 	}
 
 	if len(volumes) == 0 {
-		return nil, ErrNoVolumesReturned
+		return nil, errors.WithFields(fields, "no volumes returned")
 	}
 
 	targetVolume := goscaleio.NewVolume(driver.Client)
@@ -413,35 +480,49 @@ func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) (
 
 	err = targetVolume.MapVolumeSdc(mapVolumeSdcParam)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFieldsE(fields, "error mapping volume sdc", err)
 	}
 
 	_, err = waitMount(volumes[0].ID)
 	if err != nil {
-		return nil, err
+		fields["volumeId"] = volumes[0].ID
+		return nil, errors.WithFieldsE(
+			fields, "error waiting on volume to mount", err)
 	}
 
 	volumeAttachment, err := driver.GetVolumeAttach(volumeID, instanceID)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFieldsE(
+			fields, "error getting volume attachments", err)
 	}
 
-	// log.Println(fmt.Sprintf("Attached volume %s to instance %s", volumeID, instanceID))
+	log.WithFields(log.Fields{
+		"provider":   providerName,
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	}).Debug("attached volume to instance")
 	return volumeAttachment, nil
 }
 
 func (driver *Driver) DetachVolume(runAsync bool, volumeID string, blank string) error {
+
+	fields := eff(map[string]interface{}{
+		"runAsync": runAsync,
+		"volumeId": volumeID,
+		"blank":    blank,
+	})
+
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 
 	volumes, err := driver.getVolume(volumeID, "")
 	if err != nil {
-		return err
+		return errors.WithFieldsE(fields, "error getting volume", err)
 	}
 
 	if len(volumes) == 0 {
-		return ErrNoVolumesReturned
+		return errors.WithFields(fields, "no volumes returned")
 	}
 
 	targetVolume := goscaleio.NewVolume(driver.Client)
@@ -456,10 +537,12 @@ func (driver *Driver) DetachVolume(runAsync bool, volumeID string, blank string)
 	// need to detect if unmounted first
 	err = targetVolume.UnmapVolumeSdc(unmapVolumeSdcParam)
 	if err != nil {
-		return err
+		return errors.WithFieldsE(fields, "error unmapping volume sdc", err)
 	}
 
-	log.Println("Detached volume", volumeID)
+	log.WithFields(log.Fields{
+		"provider": providerName,
+		"volumeId": volumeID}).Debug("detached volume")
 	return nil
 }
 
@@ -478,11 +561,13 @@ func waitMount(volumeID string) (*goscaleio.SdcMappedVolume, error) {
 	successCh := make(chan *goscaleio.SdcMappedVolume, 1)
 	errorCh := make(chan error, 1)
 	go func(volumeID string) {
-		log.Println("ScaleIO: waiting for volume mount")
+		log.WithField("provider", providerName).Debug("waiting for volume mount")
 		for {
 			sdcMappedVolumes, err := goscaleio.GetLocalVolumeMap()
 			if err != nil {
-				errorCh <- fmt.Errorf("ScaleIO: problem getting local volume mappings: %s", err)
+				errorCh <- errors.WithFieldE(
+					"provider", providerName,
+					"problem getting local volume mappings", err)
 				return
 			}
 
@@ -506,12 +591,17 @@ func waitMount(volumeID string) (*goscaleio.SdcMappedVolume, error) {
 
 	select {
 	case sdcMappedVolume := <-successCh:
-		log.Println(fmt.Sprintf("ScaleIO: got sdcMappedVolume %s at %s", sdcMappedVolume.VolumeID, sdcMappedVolume.SdcDevice))
+		log.WithFields(log.Fields{
+			"provider": providerName,
+			"volumeId": sdcMappedVolume.VolumeID,
+			"volume":   sdcMappedVolume.SdcDevice,
+		}).Debug("got sdcMappedVolume")
 		return sdcMappedVolume, nil
 	case err := <-errorCh:
 		return &goscaleio.SdcMappedVolume{}, err
 	case <-timeout:
-		return &goscaleio.SdcMappedVolume{}, fmt.Errorf("ScaleIO: timed out waiting for mount")
+		return &goscaleio.SdcMappedVolume{}, errors.WithFields(
+			ef(), "timed out waiting for mount")
 	}
 
 }

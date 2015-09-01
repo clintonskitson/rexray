@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
+	log "github.com/Sirupsen/logrus"
+
+	"github.com/emccode/rexray/config"
 	storagedriver "github.com/emccode/rexray/drivers/storage"
 )
 
-var (
-	debug          string
-	storageDrivers string
-)
+type StorageDriverManager struct {
+	Drivers map[string]storagedriver.Driver
+}
 
 var (
 	ErrDriverBlockDeviceDiscovery = errors.New("Driver Block Device discovery failed")
@@ -23,31 +24,27 @@ var (
 	ErrMultipleDriversDetected    = errors.New("Multiple drivers detected, must declare with driver with env of REXRAY_STORAGEDRIVER=")
 )
 
-func init() {
-	debug = strings.ToUpper(os.Getenv("REXRAY_DEBUG"))
-	initStorageDrivers()
-}
+func Init(cfg *config.Config) (*StorageDriverManager, error) {
 
-func initStorageDrivers() {
-	storageDrivers = strings.ToLower(os.Getenv("REXRAY_STORAGEDRIVERS"))
-	var err error
-	storagedriver.Adapters, err = storagedriver.GetDrivers(storageDrivers)
-	if err != nil && debug == "TRUE" {
-		fmt.Println(err)
+	sd, sdErr := storagedriver.GetDrivers(cfg, cfg.StorageDrivers)
+	if sdErr != nil {
+		return nil, sdErr
 	}
 
-	if len(storagedriver.Adapters) == 0 {
-		if debug == "true" {
-			fmt.Println("Rexray: No storage adapters initialized")
-		}
+	if len(sd) == 0 {
+		log.Debug("No storage manager adapters initialized")
 	}
+
+	return &StorageDriverManager{
+		Drivers: sd,
+	}, nil
 }
 
 // GetVolumeMapping performs storage introspection and
 // returns a listing of block devices from the guest
-func GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
+func (sdm *StorageDriverManager) GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
 	var allBlockDevices []*storagedriver.BlockDevice
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		blockDevices, err := driver.GetVolumeMapping()
 		if err != nil {
 			return []*storagedriver.BlockDevice{}, fmt.Errorf("Error: %s: %s", ErrDriverBlockDeviceDiscovery, err)
@@ -64,9 +61,9 @@ func GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
 
 }
 
-func GetInstance() ([]*storagedriver.Instance, error) {
+func (sdm *StorageDriverManager) GetInstance() ([]*storagedriver.Instance, error) {
 	var allInstances []*storagedriver.Instance
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		instance, err := driver.GetInstance()
 		if err != nil {
 			return nil, fmt.Errorf("Error: %s: %s", ErrDriverInstanceDiscovery, err)
@@ -79,10 +76,10 @@ func GetInstance() ([]*storagedriver.Instance, error) {
 	return allInstances, nil
 }
 
-func GetVolume(volumeID, volumeName string) ([]*storagedriver.Volume, error) {
+func (sdm *StorageDriverManager) GetVolume(volumeID, volumeName string) ([]*storagedriver.Volume, error) {
 	var allVolumes []*storagedriver.Volume
 
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		volumes, err := driver.GetVolume(volumeID, volumeName)
 		if err != nil {
 			return []*storagedriver.Volume{}, fmt.Errorf("Error: %s: %s", ErrDriverVolumeDiscovery, err)
@@ -97,10 +94,10 @@ func GetVolume(volumeID, volumeName string) ([]*storagedriver.Volume, error) {
 	return allVolumes, nil
 }
 
-func GetSnapshot(volumeID, snapshotID, snapshotName string) ([]*storagedriver.Snapshot, error) {
+func (sdm *StorageDriverManager) GetSnapshot(volumeID, snapshotID, snapshotName string) ([]*storagedriver.Snapshot, error) {
 	var allSnapshots []*storagedriver.Snapshot
 
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		snapshots, err := driver.GetSnapshot(volumeID, snapshotID, snapshotName)
 		if err != nil {
 			return nil, fmt.Errorf("Error: %s: %s", ErrDriverSnapshotDiscovery, err)
@@ -115,11 +112,11 @@ func GetSnapshot(volumeID, snapshotID, snapshotName string) ([]*storagedriver.Sn
 	return allSnapshots, nil
 }
 
-func CreateSnapshot(runAsync bool, snapshotName, volumeID, description string) ([]*storagedriver.Snapshot, error) {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) CreateSnapshot(runAsync bool, snapshotName, volumeID, description string) ([]*storagedriver.Snapshot, error) {
+	if len(sdm.Drivers) > 1 {
 		return nil, ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		snapshot, err := driver.CreateSnapshot(runAsync, snapshotName, volumeID, description)
 		if err != nil {
 			return nil, err
@@ -129,11 +126,11 @@ func CreateSnapshot(runAsync bool, snapshotName, volumeID, description string) (
 	return nil, nil
 }
 
-func RemoveSnapshot(snapshotID string) error {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) RemoveSnapshot(snapshotID string) error {
+	if len(sdm.Drivers) > 1 {
 		return ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		err := driver.RemoveSnapshot(snapshotID)
 		if err != nil {
 			return err
@@ -142,11 +139,11 @@ func RemoveSnapshot(snapshotID string) error {
 	return nil
 }
 
-func CreateVolume(runAsync bool, volumeName string, volumeID, snapshotID string, volumeType string, IOPS int64, size int64, availabilityZone string) (*storagedriver.Volume, error) {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) CreateVolume(runAsync bool, volumeName string, volumeID, snapshotID string, volumeType string, IOPS int64, size int64, availabilityZone string) (*storagedriver.Volume, error) {
+	if len(sdm.Drivers) > 1 {
 		return &storagedriver.Volume{}, ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		var minSize int
 		var err error
 		minVolSize := os.Getenv("REXRAY_MINVOLSIZE")
@@ -168,11 +165,11 @@ func CreateVolume(runAsync bool, volumeName string, volumeID, snapshotID string,
 	return &storagedriver.Volume{}, nil
 }
 
-func RemoveVolume(volumeID string) error {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) RemoveVolume(volumeID string) error {
+	if len(sdm.Drivers) > 1 {
 		return ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		err := driver.RemoveVolume(volumeID)
 		if err != nil {
 			return err
@@ -181,11 +178,11 @@ func RemoveVolume(volumeID string) error {
 	return nil
 }
 
-func AttachVolume(runAsync bool, volumeID string, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) AttachVolume(runAsync bool, volumeID string, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+	if len(sdm.Drivers) > 1 {
 		return []*storagedriver.VolumeAttachment{}, ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		if instanceID == "" {
 			instance, err := driver.GetInstance()
 			if err != nil {
@@ -203,11 +200,11 @@ func AttachVolume(runAsync bool, volumeID string, instanceID string) ([]*storage
 	return []*storagedriver.VolumeAttachment{}, nil
 }
 
-func DetachVolume(runAsync bool, volumeID string, instanceID string) error {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) DetachVolume(runAsync bool, volumeID string, instanceID string) error {
+	if len(sdm.Drivers) > 1 {
 		return ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		if instanceID == "" {
 			instance, err := driver.GetInstance()
 			if err != nil {
@@ -225,11 +222,11 @@ func DetachVolume(runAsync bool, volumeID string, instanceID string) error {
 	return nil
 }
 
-func GetVolumeAttach(volumeID string, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) GetVolumeAttach(volumeID string, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+	if len(sdm.Drivers) > 1 {
 		return []*storagedriver.VolumeAttachment{}, ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		volumeAttachments, err := driver.GetVolumeAttach(volumeID, instanceID)
 		if err != nil {
 			return []*storagedriver.VolumeAttachment{}, err
@@ -240,11 +237,11 @@ func GetVolumeAttach(volumeID string, instanceID string) ([]*storagedriver.Volum
 	return []*storagedriver.VolumeAttachment{}, nil
 }
 
-func CopySnapshot(runAsync bool, volumeID, snapshotID, snapshotName, targetSnapshotName, targetRegion string) (*storagedriver.Snapshot, error) {
-	if len(storagedriver.Adapters) > 1 {
+func (sdm *StorageDriverManager) CopySnapshot(runAsync bool, volumeID, snapshotID, snapshotName, targetSnapshotName, targetRegion string) (*storagedriver.Snapshot, error) {
+	if len(sdm.Drivers) > 1 {
 		return nil, ErrMultipleDriversDetected
 	}
-	for _, driver := range storagedriver.Adapters {
+	for _, driver := range sdm.Drivers {
 		snapshot, err := driver.CopySnapshot(runAsync, volumeID, snapshotID, snapshotName, targetSnapshotName, targetRegion)
 		if err != nil {
 			return nil, err
@@ -256,4 +253,8 @@ func CopySnapshot(runAsync bool, volumeID, snapshotID, snapshotName, targetSnaps
 
 func GetDriverNames() []string {
 	return storagedriver.GetDriverNames()
+}
+
+func (sdm *StorageDriverManager) GetDriverNames() []string {
+	return GetDriverNames()
 }

@@ -20,15 +20,20 @@ const (
 	defaultVolumeSize int64 = 16
 )
 
-type Driver struct{}
+type Driver struct {
+	sdm *storage.StorageDriverManager
+}
 
 func init() {
 	providerName = "docker"
 	volumedriver.Register("docker", Init)
 }
 
-func Init() (volumedriver.Driver, error) {
-	driver := &Driver{}
+func Init(
+	storageDriverManager *storage.StorageDriverManager) (volumedriver.Driver, error) {
+	driver := &Driver{
+		sdm: storageDriverManager,
+	}
 
 	if os.Getenv("REXRAY_DEBUG") == "true" {
 		log.Println("Volume Manager Driver Initialized: " + providerName)
@@ -51,7 +56,7 @@ func (driver *Driver) Mount(volumeName, volumeID string, overwriteFs bool, newFs
 		return "", errors.New("Missing volume name or ID")
 	}
 
-	instances, err := storage.GetInstance()
+	instances, err := driver.sdm.GetInstance()
 	if err != nil {
 		return "", err
 	}
@@ -63,7 +68,7 @@ func (driver *Driver) Mount(volumeName, volumeID string, overwriteFs bool, newFs
 		return "", errors.New("Too many instances returned, limit the storagedrivers")
 	}
 
-	volumes, err := storage.GetVolume(volumeID, volumeName)
+	volumes, err := driver.sdm.GetVolume(volumeID, volumeName)
 	if err != nil {
 		return "", err
 	}
@@ -75,13 +80,15 @@ func (driver *Driver) Mount(volumeName, volumeID string, overwriteFs bool, newFs
 		return "", errors.New("Multiple volumes returned by name")
 	}
 
-	volumeAttachment, err := storage.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
+	volumeAttachment, err := driver.sdm.GetVolumeAttach(
+		volumes[0].VolumeID, instances[0].InstanceID)
 	if err != nil {
 		return "", err
 	}
 
 	if len(volumeAttachment) == 0 {
-		volumeAttachment, err = storage.AttachVolume(false, volumes[0].VolumeID, instances[0].InstanceID)
+		volumeAttachment, err = driver.sdm.AttachVolume(
+			false, volumes[0].VolumeID, instances[0].InstanceID)
 		if err != nil {
 			return "", err
 		}
@@ -133,7 +140,7 @@ func (driver *Driver) Unmount(volumeName, volumeID string) error {
 		return errors.New("Missing volume name or ID")
 	}
 
-	instances, err := storage.GetInstance()
+	instances, err := driver.sdm.GetInstance()
 	if err != nil {
 		return err
 	}
@@ -145,7 +152,7 @@ func (driver *Driver) Unmount(volumeName, volumeID string) error {
 		return errors.New("Too many instances returned, limit the storagedrivers")
 	}
 
-	volumes, err := storage.GetVolume(volumeID, volumeName)
+	volumes, err := driver.sdm.GetVolume(volumeID, volumeName)
 	if err != nil {
 		return err
 	}
@@ -157,7 +164,7 @@ func (driver *Driver) Unmount(volumeName, volumeID string) error {
 		return errors.New("Multiple volumes returned by name")
 	}
 
-	volumeAttachment, err := storage.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
+	volumeAttachment, err := driver.sdm.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
 	if err != nil {
 		return err
 	}
@@ -180,7 +187,7 @@ func (driver *Driver) Unmount(volumeName, volumeID string) error {
 		return err
 	}
 
-	err = storage.DetachVolume(false, volumes[0].VolumeID, "")
+	err = driver.sdm.DetachVolume(false, volumes[0].VolumeID, "")
 	if err != nil {
 		return err
 	}
@@ -194,7 +201,7 @@ func (driver *Driver) Path(volumeName, volumeID string) (string, error) {
 		return "", errors.New("Missing volume name or ID")
 	}
 
-	instances, err := storage.GetInstance()
+	instances, err := driver.sdm.GetInstance()
 	if err != nil {
 		return "", err
 	}
@@ -206,7 +213,7 @@ func (driver *Driver) Path(volumeName, volumeID string) (string, error) {
 		return "", errors.New("Too many instances returned, limit the storagedrivers")
 	}
 
-	volumes, err := storage.GetVolume(volumeID, volumeName)
+	volumes, err := driver.sdm.GetVolume(volumeID, volumeName)
 	if err != nil {
 		return "", err
 	}
@@ -218,7 +225,7 @@ func (driver *Driver) Path(volumeName, volumeID string) (string, error) {
 		return "", errors.New("Multiple volumes returned by name")
 	}
 
-	volumeAttachment, err := storage.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
+	volumeAttachment, err := driver.sdm.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
 	if err != nil {
 		return "", err
 	}
@@ -245,7 +252,7 @@ func (driver *Driver) Create(volumeName string) error {
 		return errors.New("Missing volume name")
 	}
 
-	instances, err := storage.GetInstance()
+	instances, err := driver.sdm.GetInstance()
 	if err != nil {
 		return err
 	}
@@ -257,7 +264,7 @@ func (driver *Driver) Create(volumeName string) error {
 		return errors.New("Too many instances returned, limit the storagedrivers")
 	}
 
-	volumes, err := storage.GetVolume("", volumeName)
+	volumes, err := driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return err
 	}
@@ -279,7 +286,8 @@ func (driver *Driver) Create(volumeName string) error {
 	}
 	availabilityZone := os.Getenv("REXRAY_DOCKER_AVAILABILITYZONE")
 
-	_, err = storage.CreateVolume(false, volumeName, "", "", volumeType, IOPS, size, availabilityZone)
+	_, err = driver.sdm.CreateVolume(
+		false, volumeName, "", "", volumeType, IOPS, size, availabilityZone)
 	if err != nil {
 		return err
 	}
@@ -292,7 +300,7 @@ func (driver *Driver) Remove(volumeName string) error {
 		return errors.New("Missing volume name")
 	}
 
-	instances, err := storage.GetInstance()
+	instances, err := driver.sdm.GetInstance()
 	if err != nil {
 		return err
 	}
@@ -304,7 +312,7 @@ func (driver *Driver) Remove(volumeName string) error {
 		return errors.New("Too many instances returned, limit the storagedrivers")
 	}
 
-	volumes, err := storage.GetVolume("", volumeName)
+	volumes, err := driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return err
 	}
@@ -321,7 +329,7 @@ func (driver *Driver) Remove(volumeName string) error {
 		return err
 	}
 
-	err = storage.RemoveVolume(volumes[0].VolumeID)
+	err = driver.sdm.RemoveVolume(volumes[0].VolumeID)
 	if err != nil {
 		return err
 	}
@@ -331,7 +339,7 @@ func (driver *Driver) Remove(volumeName string) error {
 
 // Attach will attach a volume to an instance
 func (driver *Driver) Attach(volumeName, instanceID string) (string, error) {
-	volumes, err := storage.GetVolume("", volumeName)
+	volumes, err := driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return "", err
 	}
@@ -343,12 +351,12 @@ func (driver *Driver) Attach(volumeName, instanceID string) (string, error) {
 		return "", errors.New("Multiple volumes returned by name")
 	}
 
-	_, err = storage.AttachVolume(true, volumes[0].VolumeID, instanceID)
+	_, err = driver.sdm.AttachVolume(true, volumes[0].VolumeID, instanceID)
 	if err != nil {
 		return "", err
 	}
 
-	volumes, err = storage.GetVolume("", volumeName)
+	volumes, err = driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return "", err
 	}
@@ -358,17 +366,17 @@ func (driver *Driver) Attach(volumeName, instanceID string) (string, error) {
 
 // Remove will remove a remote volume
 func (driver *Driver) Detach(volumeName, instanceID string) error {
-	volume, err := storage.GetVolume("", volumeName)
+	volume, err := driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return err
 	}
 
-	return storage.DetachVolume(true, volume[0].VolumeID, instanceID)
+	return driver.sdm.DetachVolume(true, volume[0].VolumeID, instanceID)
 }
 
 // NetworkName will return relevant information about how a volume can be discovered on an OS
 func (driver *Driver) NetworkName(volumeName, instanceID string) (string, error) {
-	volumes, err := storage.GetVolume("", volumeName)
+	volumes, err := driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return "", err
 	}
@@ -380,7 +388,8 @@ func (driver *Driver) NetworkName(volumeName, instanceID string) (string, error)
 		return "", errors.New("Multiple volumes returned by name")
 	}
 
-	volumeAttachment, err := storage.GetVolumeAttach(volumes[0].VolumeID, instanceID)
+	volumeAttachment, err := driver.sdm.GetVolumeAttach(
+		volumes[0].VolumeID, instanceID)
 	if err != nil {
 		return "", err
 	}
@@ -389,7 +398,7 @@ func (driver *Driver) NetworkName(volumeName, instanceID string) (string, error)
 		return "", errors.New("Volume not attached")
 	}
 
-	volumes, err = storage.GetVolume("", volumeName)
+	volumes, err = driver.sdm.GetVolume("", volumeName)
 	if err != nil {
 		return "", err
 	}

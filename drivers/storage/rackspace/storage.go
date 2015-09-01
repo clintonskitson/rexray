@@ -1,17 +1,19 @@
 package rackspace
 
 import (
-	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+
+	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/drivers/storage"
+	"github.com/emccode/rexray/errors"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
 	"github.com/rackspace/gophercloud/openstack/blockstorage/v1/snapshots"
@@ -28,16 +30,31 @@ const (
 	minSize = 75 //rackspace is 75
 )
 
-var (
-	ErrMissingVolumeID = errors.New("Missing VolumeID")
-)
-
 type Driver struct {
 	Provider           *gophercloud.ProviderClient
 	Client             *gophercloud.ServiceClient
 	ClientBlockStorage *gophercloud.ServiceClient
 	Region             string
 	InstanceID         string
+	Config             *config.Config
+}
+
+func ef() errors.Fields {
+	return errors.Fields{
+		"provider": providerName,
+	}
+}
+
+func eff(fields errors.Fields) map[string]interface{} {
+	errFields := map[string]interface{}{
+		"provider": providerName,
+	}
+	if fields != nil {
+		for k, v := range fields {
+			errFields[k] = v
+		}
+	}
+	return errFields
 }
 
 func init() {
@@ -45,10 +62,22 @@ func init() {
 	providerName = "RackSpace"
 }
 
-func getInstanceID() (string, error) {
-	cmdOut, err := exec.Command("/usr/bin/xenstore-read", "name").Output()
+func (d *Driver) newCmd(name string, args ...string) *exec.Cmd {
+	return newCmd(d.Config, name, args...)
+}
+
+func newCmd(cfg *config.Config, name string, args ...string) *exec.Cmd {
+	c := exec.Command(name, args...)
+	c.Env = cfg.EnvVars()
+	return c
+}
+
+func getInstanceID(cfg *config.Config) (string, error) {
+	cmdOut, err := newCmd(cfg, "/usr/bin/xenstore-read", "name").Output()
+
 	if err != nil {
-		return "", fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
+		return "", errors.WithFieldsE(ef(),
+			storagedriver.ErrDriverInstanceDiscovery, err)
 	}
 
 	instanceID := strings.Replace(string(cmdOut), "\n", "", -1)
@@ -56,33 +85,31 @@ func getInstanceID() (string, error) {
 	validInstanceID := regexp.MustCompile(`^instance-`)
 	valid := validInstanceID.MatchString(instanceID)
 	if !valid {
-		return "", storagedriver.ErrDriverInstanceDiscovery
+		return "", errors.New(storagedriver.ErrDriverInstanceDiscovery)
 	}
 
 	instanceID = strings.Replace(instanceID, "instance-", "", 1)
 	return instanceID, nil
 }
 
-func Init() (storagedriver.Driver, error) {
+func Init(cfg *config.Config) (storagedriver.Driver, error) {
 
-	instanceID, err := getInstanceID()
+	instanceID, err := getInstanceID(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil,
+			errors.WithFieldsE(ef(), "error getting instance id", err)
 	}
 
-	region, err := getInstanceRegion()
+	region, err := getInstanceRegion(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil,
+			errors.WithFieldsE(ef(), "error getting instance region", err)
 	}
 
-	opts, err := openstack.AuthOptionsFromEnv()
+	provider, err := openstack.AuthenticatedClient(getAuthOptions(cfg))
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
-	}
-
-	provider, err := openstack.AuthenticatedClient(opts)
-	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil,
+			errors.WithFieldsE(ef(), "error getting authenticated client", err)
 	}
 
 	region = strings.ToUpper(region)
@@ -90,14 +117,16 @@ func Init() (storagedriver.Driver, error) {
 		Region: region,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil,
+			errors.WithFieldsE(ef(), "error getting newComputeV2", err)
 	}
 
 	clientBlockStorage, err := openstack.NewBlockStorageV1(provider, gophercloud.EndpointOpts{
 		Region: region,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Error: %v", err)
+		return nil, errors.WithFieldsE(
+			ef(), "error getting newBlockStorageV1", err)
 	}
 
 	driver := &Driver{
@@ -106,15 +135,30 @@ func Init() (storagedriver.Driver, error) {
 		ClientBlockStorage: clientBlockStorage,
 		Region:             region,
 		InstanceID:         instanceID,
+		Config:             cfg,
 	}
 
 	return driver, nil
 }
 
+func getAuthOptions(cfg *config.Config) gophercloud.AuthOptions {
+	return gophercloud.AuthOptions{
+		IdentityEndpoint: config.RackspaceAuthUrl,
+		UserID:           config.RackspaceUserId,
+		Username:         config.RackspaceUserName,
+		Password:         config.RackspacePassword,
+		TenantID:         config.RackspaceTenantId,
+		TenantName:       config.RackspaceTenantName,
+		DomainID:         config.RackspaceDomainId,
+		DomainName:       config.RackspaceDomainName,
+	}
+}
+
 func (driver *Driver) getInstance() (*servers.Server, error) {
 	server, err := servers.Get(driver.Client, driver.InstanceID).Extract()
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(ef(), "error getting server instance", err)
 	}
 
 	return server, nil
@@ -123,7 +167,8 @@ func (driver *Driver) getInstance() (*servers.Server, error) {
 func (driver *Driver) GetInstance() (*storagedriver.Instance, error) {
 	server, err := driver.getInstance()
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(ef(), "error getting driver instance", err)
 	}
 
 	instance := &storagedriver.Instance{
@@ -139,7 +184,10 @@ func (driver *Driver) GetInstance() (*storagedriver.Instance, error) {
 func (driver *Driver) GetVolumeMapping() ([]*storagedriver.BlockDevice, error) {
 	blockDevices, err := driver.getBlockDevices(driver.InstanceID)
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(eff(errors.Fields{
+				"instanceId": driver.InstanceID,
+			}), "error getting block devices", err)
 	}
 
 	var BlockDevices []*storagedriver.BlockDevice
@@ -166,17 +214,29 @@ func (driver *Driver) getBlockDevices(instanceID string) ([]volumeattach.VolumeA
 	// volumeAttachments, err := volumes.VolumeAttachmentResult.ExtractAll()
 	volumeAttachments, err := volumeattach.ExtractVolumeAttachments(allPages)
 	if err != nil {
-		return []volumeattach.VolumeAttachment{}, fmt.Errorf("Error: %v", err)
+		return []volumeattach.VolumeAttachment{},
+			errors.WithFieldsE(eff(errors.Fields{
+				"instanceId": instanceID}),
+				"error extracting volume attachments", err)
 	}
 
 	return volumeAttachments, nil
 
 }
 
-func getInstanceRegion() (string, error) {
-	cmdOut, err := exec.Command("/usr/bin/xenstore-read", "vm-data/provider_data/region").Output()
+func getInstanceRegion(cfg *config.Config) (string, error) {
+	cmd := newCmd(
+		cfg, "/usr/bin/xenstore-read",
+		"vm-data/provider_data/region")
+
+	cmdOut, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("Error: %v", err)
+		return "",
+			errors.WithFieldsE(eff(errors.Fields{
+				"cmd.Path": cmd.Path,
+				"cmd.Args": cmd.Args,
+				"cmd.Out":  cmdOut,
+			}), "error getting instance region", err)
 	}
 
 	region := strings.Replace(string(cmdOut), "\n", "", -1)
@@ -187,7 +247,11 @@ func (driver *Driver) getVolume(volumeID, volumeName string) (volumesRet []volum
 	if volumeID != "" {
 		volume, err := volumes.Get(driver.ClientBlockStorage, volumeID).Extract()
 		if err != nil {
-			return []volumes.Volume{}, err
+			return []volumes.Volume{},
+				errors.WithFieldsE(eff(errors.Fields{
+					"volumeId":   volumeID,
+					"volumeName": volumeName}),
+					"error getting volumes", err)
 		}
 		volumesRet = append(volumesRet, *volume)
 	} else {
@@ -197,11 +261,19 @@ func (driver *Driver) getVolume(volumeID, volumeName string) (volumesRet []volum
 
 		allPages, err := volumes.List(driver.ClientBlockStorage, listOpts).AllPages()
 		if err != nil {
-			return []volumes.Volume{}, err
+			return []volumes.Volume{},
+				errors.WithFieldsE(eff(errors.Fields{
+					"volumeId":   volumeID,
+					"volumeName": volumeName}),
+					"error listing volumes", err)
 		}
 		volumesRet, err = volumes.ExtractVolumes(allPages)
 		if err != nil {
-			return []volumes.Volume{}, err
+			return []volumes.Volume{},
+				errors.WithFieldsE(eff(errors.Fields{
+					"volumeId":   volumeID,
+					"volumeName": volumeName}),
+					"error extracting volumes", err)
 		}
 
 		var volumesRetFiltered []volumes.Volume
@@ -225,9 +297,14 @@ func (driver *Driver) getVolume(volumeID, volumeName string) (volumesRet []volum
 }
 
 func (driver *Driver) GetVolume(volumeID, volumeName string) ([]*storagedriver.Volume, error) {
+
 	volumesRet, err := driver.getVolume(volumeID, volumeName)
 	if err != nil {
-		return []*storagedriver.Volume{}, err
+		return []*storagedriver.Volume{},
+			errors.WithFieldsE(eff(errors.Fields{
+				"volumeId":   volumeID,
+				"volumeName": volumeName}),
+				"error getting volume", err)
 	}
 
 	var volumesSD []*storagedriver.Volume
@@ -260,12 +337,20 @@ func (driver *Driver) GetVolume(volumeID, volumeName string) ([]*storagedriver.V
 }
 
 func (driver *Driver) GetVolumeAttach(volumeID, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+
+	fields := eff(map[string]interface{}{
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	})
+
 	if volumeID == "" {
-		return []*storagedriver.VolumeAttachment{}, ErrMissingVolumeID
+		return []*storagedriver.VolumeAttachment{},
+			errors.WithFields(fields, "volumeId is required")
 	}
 	volume, err := driver.GetVolume(volumeID, "")
 	if err != nil {
-		return []*storagedriver.VolumeAttachment{}, err
+		return []*storagedriver.VolumeAttachment{},
+			errors.WithFieldsE(fields, "error getting volume attach", err)
 	}
 
 	if instanceID != "" {
@@ -284,10 +369,17 @@ func (driver *Driver) GetVolumeAttach(volumeID, instanceID string) ([]*storagedr
 
 func (driver *Driver) getSnapshot(volumeID, snapshotID, snapshotName string) (allSnapshots []snapshots.Snapshot, err error) {
 
+	fields := eff(map[string]interface{}{
+		"volumeId":     volumeID,
+		"snapshotId":   snapshotID,
+		"snapshotName": snapshotName,
+	})
+
 	if snapshotID != "" {
 		snapshot, err := snapshots.Get(driver.ClientBlockStorage, snapshotID).Extract()
 		if err != nil {
-			return []snapshots.Snapshot{}, err
+			return []snapshots.Snapshot{},
+				errors.WithFieldsE(fields, "error getting snapshot", err)
 		}
 
 		allSnapshots = append(allSnapshots, *snapshot)
@@ -299,12 +391,14 @@ func (driver *Driver) getSnapshot(volumeID, snapshotID, snapshotName string) (al
 
 		allPages, err := snapshots.List(driver.ClientBlockStorage, opts).AllPages()
 		if err != nil {
-			return []snapshots.Snapshot{}, err
+			return []snapshots.Snapshot{},
+				errors.WithFieldsE(fields, "error listing snapshot", err)
 		}
 
 		allSnapshots, err = snapshots.ExtractSnapshots(allPages)
 		if err != nil {
-			return []snapshots.Snapshot{}, fmt.Errorf("Failed to extract snapshots: %v", err)
+			return []snapshots.Snapshot{},
+				errors.WithFieldsE(fields, "error extracting snapshot", err)
 		}
 	}
 
@@ -314,7 +408,12 @@ func (driver *Driver) getSnapshot(volumeID, snapshotID, snapshotName string) (al
 func (driver *Driver) GetSnapshot(volumeID, snapshotID, snapshotName string) ([]*storagedriver.Snapshot, error) {
 	snapshots, err := driver.getSnapshot(volumeID, snapshotID, snapshotName)
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(eff(errors.Fields{
+				"volumeId":     volumeID,
+				"snapshotId":   snapshotID,
+				"snapshotName": snapshotName}),
+				"error getting snapshot", err)
 	}
 
 	var snapshotsInt []*storagedriver.Snapshot
@@ -335,6 +434,14 @@ func (driver *Driver) GetSnapshot(volumeID, snapshotID, snapshotName string) ([]
 }
 
 func (driver *Driver) CreateSnapshot(runAsync bool, snapshotName, volumeID, description string) ([]*storagedriver.Snapshot, error) {
+
+	fields := eff(map[string]interface{}{
+		"runAsync":     runAsync,
+		"snapshotName": snapshotName,
+		"volumeId":     volumeID,
+		"description":  description,
+	})
+
 	opts := snapshots.CreateOpts{
 		Name:        snapshotName,
 		VolumeID:    volumeID,
@@ -344,14 +451,17 @@ func (driver *Driver) CreateSnapshot(runAsync bool, snapshotName, volumeID, desc
 
 	resp, err := snapshots.Create(driver.ClientBlockStorage, opts).Extract()
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFieldsE(fields, "error creating snapshot", err)
 	}
 
 	if !runAsync {
-		log.Println("Waiting for snapshot to complete")
+		log.Debug("waiting for snapshot creation to complete")
 		err = snapshots.WaitForStatus(driver.ClientBlockStorage, resp.ID, "available", 120)
 		if err != nil {
-			return nil, err
+			return nil,
+				errors.WithFieldsE(fields,
+					"error waiting for snapshot creation to complete", err)
 		}
 	}
 
@@ -360,7 +470,12 @@ func (driver *Driver) CreateSnapshot(runAsync bool, snapshotName, volumeID, desc
 		return nil, err
 	}
 
-	// log.Println(fmt.Sprintf("Created Snapshot: %v", snapshot))
+	log.WithFields(log.Fields{
+		"runAsync":     runAsync,
+		"snapshotName": snapshotName,
+		"volumeId":     volumeID,
+		"description":  description}).Debug("created snapshot")
+
 	return snapshot, nil
 
 }
@@ -368,27 +483,65 @@ func (driver *Driver) CreateSnapshot(runAsync bool, snapshotName, volumeID, desc
 func (driver *Driver) RemoveSnapshot(snapshotID string) error {
 	resp := snapshots.Delete(driver.ClientBlockStorage, snapshotID)
 	if resp.Err != nil {
-		return resp.Err
+		return errors.WithFieldE(
+			"snapshotId", snapshotID, "error removing snapshot", resp.Err)
 	}
 
-	log.Println("Removed Snapshot: " + snapshotID)
+	log.WithField("snapshotId", snapshotID).Debug("removed snapshot")
+
 	return nil
 }
 
-func (driver *Driver) CreateVolume(runAsync bool, volumeName string, volumeID string, snapshotID string, volumeType string, IOPS int64, size int64, availabilityZone string) (*storagedriver.Volume, error) {
+func (driver *Driver) CreateVolume(
+	runAsync bool,
+	volumeName string,
+	volumeID string,
+	snapshotID string,
+	volumeType string,
+	IOPS int64,
+	size int64,
+	availabilityZone string) (*storagedriver.Volume, error) {
+
+	fields := map[string]interface{}{
+		"provider":         providerName,
+		"runAsync":         runAsync,
+		"volumeName":       volumeName,
+		"volumeId":         volumeID,
+		"snapshotId":       snapshotID,
+		"volumeType":       volumeType,
+		"iops":             IOPS,
+		"size":             size,
+		"availabilityZone": availabilityZone,
+	}
+
 	if volumeID != "" && runAsync {
-		return nil, errors.New("Cannot create volume from volume and run asynchronously")
+		return nil, errors.WithFields(fields,
+			"cannot create volume from volume & run async")
 	}
 
 	if snapshotID != "" {
 		snapshot, err := driver.GetSnapshot("", snapshotID, "")
 		if err != nil {
-			return nil, err
+			return nil,
+				errors.WithFieldsE(fields, "error getting snapshot", err)
 		}
 
-		sizeInt, err := strconv.Atoi(snapshot[0].VolumeSize)
+		if len(snapshot) == 0 {
+			return nil,
+				errors.WithFields(fields, "snapshot array is empty")
+		}
+
+		volSize := snapshot[0].VolumeSize
+		sizeInt, err := strconv.Atoi(volSize)
 		if err != nil {
-			return nil, err
+			f := errors.Fields{
+				"volumeSize": volSize,
+			}
+			for k, v := range fields {
+				f[k] = v
+			}
+			return nil,
+				errors.WithFieldsE(f, "error casting volume size", err)
 		}
 		size = int64(sizeInt)
 	}
@@ -398,19 +551,34 @@ func (driver *Driver) CreateVolume(runAsync bool, volumeName string, volumeID st
 	if volumeID != "" {
 		volume, err = driver.GetVolume(volumeID, "")
 		if err != nil {
-			return nil, err
+			return nil, errors.WithFields(fields, "error getting volume")
 		}
 
-		sizeInt, err := strconv.Atoi(volume[0].Size)
+		if len(volume) == 0 {
+			return nil,
+				errors.WithFields(fields, "volume array is empty")
+		}
+
+		volSize := volume[0].Size
+		sizeInt, err := strconv.Atoi(volSize)
 		if err != nil {
-			return nil, err
+			f := errors.Fields{
+				"volumeSize": volSize,
+			}
+			for k, v := range fields {
+				f[k] = v
+			}
+			return nil,
+				errors.WithFieldsE(f, "error casting volume size", err)
 		}
 		size = int64(sizeInt)
 
 		volumeID := volume[0].VolumeID
-		snapshot, err := driver.CreateSnapshot(false, fmt.Sprintf("temp-%s", volumeID), volumeID, "")
+		snapshot, err := driver.CreateSnapshot(
+			false, fmt.Sprintf("temp-%s", volumeID), volumeID, "")
 		if err != nil {
-			return nil, err
+			return nil,
+				errors.WithFields(fields, "error creating snapshot")
 		}
 
 		snapshotID = snapshot[0].SnapshotID
@@ -434,43 +602,55 @@ func (driver *Driver) CreateVolume(runAsync bool, volumeName string, volumeID st
 	}
 	resp, err := volumes.Create(driver.ClientBlockStorage, options).Extract()
 	if err != nil {
-		return nil, err
+		return nil,
+			errors.WithFields(fields, "error creating volume")
 	}
 
 	if !runAsync {
-		log.Println("Waiting for volume creation to complete")
+		log.Debug("waiting for volume creation to complete")
 		err = volumes.WaitForStatus(driver.ClientBlockStorage, resp.ID, "available", 120)
 		if err != nil {
-			return nil, err
+			return nil,
+				errors.WithFields(fields,
+					"error waiting for volume creation to complete")
 		}
 
 		if volumeID != "" {
 			err := driver.RemoveSnapshot(snapshotID)
 			if err != nil {
-				return nil, err
+				return nil,
+					errors.WithFields(fields,
+						"error removing snapshot")
 			}
 		}
 	}
 
+	fields["volumeId"] = resp.ID
+	fields["volumeName"] = ""
+
 	volume, err = driver.GetVolume(resp.ID, "")
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFields(fields,
+			"error removing snapshot")
 	}
 
-	// log.Println(fmt.Sprintf("Created volume: %+v", volume[0]))
+	log.WithFields(fields).Debug("created volume")
 	return volume[0], nil
 }
 
 func (driver *Driver) RemoveVolume(volumeID string) error {
+	fields := eff(map[string]interface{}{
+		"volumeId": volumeID,
+	})
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 	res := volumes.Delete(driver.ClientBlockStorage, volumeID)
 	if res.Err != nil {
-		return res.Err
+		return errors.WithFieldsE(fields, "error removing volume", res.Err)
 	}
 
-	log.Println("Deleted Volume: " + volumeID)
+	log.WithFields(fields).Debug("removed volume")
 	return nil
 }
 
@@ -517,7 +697,9 @@ func getLocalDevices() (deviceNames []string, err error) {
 	file := "/proc/partitions"
 	contentBytes, err := ioutil.ReadFile(file)
 	if err != nil {
-		return []string{}, errors.New(fmt.Sprintf("Couldn't read %s: %v", file, err))
+		return []string{},
+			errors.WithFieldsE(
+				eff(errors.Fields{"file": file}), "error reading file", err)
 	}
 
 	content := string(contentBytes)
@@ -534,9 +716,16 @@ func getLocalDevices() (deviceNames []string, err error) {
 }
 
 func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) ([]*storagedriver.VolumeAttachment, error) {
+	fields := eff(map[string]interface{}{
+		"runAsync":   runAsync,
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	})
+
 	nextDeviceName, err := driver.GetDeviceNextAvailable()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFieldsE(
+			fields, "error getting next available device", err)
 	}
 
 	options := &volumeattach.CreateOpts{
@@ -546,14 +735,16 @@ func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) (
 
 	_, err = volumeattach.Create(driver.Client, instanceID, options).Extract()
 	if err != nil {
-		return nil, err
+		return nil, errors.WithFieldsE(
+			fields, "error attaching volume", err)
 	}
 
 	if !runAsync {
-		log.Println("Waiting for volume attachment to complete")
+		log.WithFields(fields).Debug("waiting for volume to attach")
 		err = driver.waitVolumeAttach(volumeID)
 		if err != nil {
-			return nil, err
+			return nil, errors.WithFieldsE(
+				fields, "error waiting for volume to detach", err)
 		}
 	}
 
@@ -562,44 +753,58 @@ func (driver *Driver) AttachVolume(runAsync bool, volumeID, instanceID string) (
 		return nil, err
 	}
 
-	log.Println(fmt.Sprintf("Attached volume %s to instance %s", volumeID, instanceID))
+	log.WithFields(fields).Debug("volume attached")
 	return volumeAttachment, nil
 }
 
 func (driver *Driver) DetachVolume(runAsync bool, volumeID, instanceID string) error {
+	fields := eff(map[string]interface{}{
+		"runAsync":   runAsync,
+		"volumeId":   volumeID,
+		"instanceId": instanceID,
+	})
+
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 	volume, err := driver.GetVolume(volumeID, "")
 	if err != nil {
-		return err
+		return errors.WithFieldsE(fields, "error getting volume", err)
 	}
 
-	resp := volumeattach.Delete(driver.Client, volume[0].Attachments[0].InstanceID, volumeID)
+	fields["instanceId"] = volume[0].Attachments[0].InstanceID
+	resp := volumeattach.Delete(
+		driver.Client, volume[0].Attachments[0].InstanceID, volumeID)
 	if resp.Err != nil {
-		return resp.Err
+		return errors.WithFieldsE(fields, "error deleting volume", err)
 	}
 
 	if !runAsync {
-		log.Println("Waiting for volume detachment to complete")
+		log.WithFields(fields).Debug("waiting for volume to detach")
 		err = driver.waitVolumeDetach(volumeID)
 		if err != nil {
-			return err
+			return errors.WithFieldsE(
+				fields, "error waiting for volume to detach", err)
 		}
 	}
 
-	log.Println("Detached volume", volumeID)
+	log.WithFields(fields).Debug("volume detached")
 	return nil
 }
 
 func (driver *Driver) waitVolumeAttach(volumeID string) error {
+
+	fields := eff(map[string]interface{}{
+		"volumeId": volumeID,
+	})
+
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 	for {
 		volume, err := driver.GetVolume(volumeID, "")
 		if err != nil {
-			return err
+			return errors.WithFieldsE(fields, "error getting volume", err)
 		}
 		if volume[0].Status == "in-use" {
 			break
@@ -611,13 +816,18 @@ func (driver *Driver) waitVolumeAttach(volumeID string) error {
 }
 
 func (driver *Driver) waitVolumeDetach(volumeID string) error {
+
+	fields := eff(map[string]interface{}{
+		"volumeId": volumeID,
+	})
+
 	if volumeID == "" {
-		return ErrMissingVolumeID
+		return errors.WithFields(fields, "volumeId is required")
 	}
 	for {
 		volume, err := driver.GetVolume(volumeID, "")
 		if err != nil {
-			return err
+			return errors.WithFieldsE(fields, "error getting volume", err)
 		}
 		if len(volume[0].Attachments) == 0 {
 			break

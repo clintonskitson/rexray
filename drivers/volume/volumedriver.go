@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/emccode/rexray/storage"
 	"github.com/emccode/rexray/util"
 )
 
@@ -44,7 +45,8 @@ type Driver interface {
 	NetworkName(volumeName, instanceID string) (string, error)
 }
 
-type InitFunc func() (Driver, error)
+type InitFunc func(
+	storageDriverManager *storage.StorageDriverManager) (Driver, error)
 
 func Register(name string, initFunc InitFunc) error {
 	driverInitFuncs[name] = initFunc
@@ -57,22 +59,21 @@ func init() {
 	debug = strings.ToUpper(os.Getenv("REXRAY_DEBUG"))
 }
 
-func GetDrivers(volumeDrivers string) (map[string]Driver, error) {
+func GetDrivers(
+	volumeDrivers []string,
+	storageDriverManager *storage.StorageDriverManager) (map[string]Driver, error) {
+
 	var err error
-	var volumeDriversArr []string
-	if volumeDrivers != "" {
-		volumeDriversArr = strings.Split(volumeDrivers, ",")
-	}
 
 	if debug == "TRUE" {
 		fmt.Println(driverInitFuncs)
 	}
 
 	for name, initFunc := range driverInitFuncs {
-		if len(volumeDriversArr) > 0 && !util.StringInSlice(name, volumeDriversArr) {
+		if len(volumeDrivers) > 0 && !util.StringInSlice(name, volumeDrivers) {
 			continue
 		}
-		drivers[name], err = initFunc()
+		drivers[name], err = initFunc(storageDriverManager)
 		if err != nil {
 			if debug == "TRUE" {
 				fmt.Println(fmt.Sprintf("Info (%s): %s", name, err))

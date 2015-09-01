@@ -1,11 +1,11 @@
 package storagedriver
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/util"
 )
 
@@ -15,11 +15,7 @@ var (
 	debug           string
 )
 
-var (
-	ErrDriverInstanceDiscovery = errors.New("Driver Instance discovery failed")
-)
-
-var Adapters map[string]Driver
+const ErrDriverInstanceDiscovery = "driver Instance discovery failed"
 
 type BlockDevice struct {
 	ProviderName string
@@ -114,7 +110,7 @@ type Driver interface {
 	CopySnapshot(runAsync bool, volumeID, snapshotID, snapshotName, destinationSnapshotName, destinationRegion string) (*Snapshot, error)
 }
 
-type InitFunc func() (Driver, error)
+type InitFunc func(conf *config.Config) (Driver, error)
 
 func Register(name string, initFunc InitFunc) error {
 	driverInitFuncs[name] = initFunc
@@ -135,22 +131,18 @@ func GetDriverNames() []string {
 	return names
 }
 
-func GetDrivers(storageDrivers string) (map[string]Driver, error) {
+func GetDrivers(conf *config.Config, storageDrivers []string) (map[string]Driver, error) {
 	var err error
-	var storageDriversArr []string
-	if storageDrivers != "" {
-		storageDriversArr = strings.Split(storageDrivers, ",")
-	}
 
 	if debug == "TRUE" {
 		fmt.Println(driverInitFuncs)
 	}
 
 	for name, initFunc := range driverInitFuncs {
-		if len(storageDriversArr) > 0 && !util.StringInSlice(name, storageDriversArr) {
+		if len(storageDrivers) > 0 && !util.StringInSlice(name, storageDrivers) {
 			continue
 		}
-		drivers[name], err = initFunc()
+		drivers[name], err = initFunc(conf)
 		if err != nil {
 			if debug == "TRUE" {
 				fmt.Println(fmt.Sprintf("Info (%s): %s", name, err))

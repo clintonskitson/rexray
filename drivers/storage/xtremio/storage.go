@@ -17,6 +17,7 @@ import (
 
 	goxtremio "github.com/emccode/goxtremio"
 	xmsv3 "github.com/emccode/goxtremio/api/v3"
+	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/drivers/storage"
 )
 
@@ -83,7 +84,7 @@ func getIQN() (string, error) {
 	return "", errors.New("IQN not found")
 }
 
-func Init() (storagedriver.Driver, error) {
+func Init(cfg *config.Config) (storagedriver.Driver, error) {
 
 	remoteManagement, _ := strconv.ParseBool(os.Getenv("REXRAY_REMOTEMANAGEMENT"))
 

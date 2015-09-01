@@ -1,18 +1,19 @@
 package ec2
 
 import (
+	log "github.com/Sirupsen/logrus"
+
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/drivers/storage"
 	"github.com/goamz/goamz/aws"
 	"github.com/goamz/goamz/ec2"
@@ -25,6 +26,7 @@ var (
 type Driver struct {
 	InstanceDocument *instanceIdentityDocument
 	EC2Instance      *ec2.EC2
+	Config           *config.Config
 }
 
 var (
@@ -38,14 +40,15 @@ func init() {
 	storagedriver.Register("ec2", Init)
 }
 
-func Init() (storagedriver.Driver, error) {
+func Init(conf *config.Config) (storagedriver.Driver, error) {
+
 	instanceDocument, err := getInstanceIdendityDocument()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %s", storagedriver.ErrDriverInstanceDiscovery, err)
 	}
 
-	auth := aws.Auth{AccessKey: os.Getenv("AWS_ACCESS_KEY"), SecretKey: os.Getenv("AWS_SECRET_KEY")}
-	region := os.Getenv("AWS_REGION")
+	auth := aws.Auth{AccessKey: conf.AwsAccessKey, SecretKey: conf.AwsSecretKey}
+	region := conf.AwsRegion
 	if region == "" {
 		region = instanceDocument.Region
 	}
@@ -59,12 +62,12 @@ func Init() (storagedriver.Driver, error) {
 	driver := &Driver{
 		EC2Instance:      ec2Instance,
 		InstanceDocument: instanceDocument,
+		Config:           conf,
 		// DDTable:          table,
 	}
 
-	if os.Getenv("REXRAY_DEBUG") == "true" {
-		log.Println("Storage Driver Initialized: " + providerName)
-	}
+	log.WithField("providerName", providerName).Debug(
+		"storage driver initialized")
 
 	return driver, nil
 }
@@ -689,7 +692,9 @@ func (driver *Driver) CopySnapshot(runAsync bool, volumeID, snapshotID, snapshot
 	}
 	resp := &ec2.CopySnapshotResp{}
 
-	auth := aws.Auth{AccessKey: os.Getenv("AWS_ACCESS_KEY"), SecretKey: os.Getenv("AWS_SECRET_KEY")}
+	auth := aws.Auth{
+		AccessKey: driver.Config.AwsAccessKey,
+		SecretKey: driver.Config.AwsSecretKey}
 	destEC2Instance := ec2.New(
 		auth,
 		aws.Regions[destinationRegion],
