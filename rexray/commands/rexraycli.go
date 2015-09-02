@@ -57,6 +57,7 @@ var (
 	moduleTypeId            int32
 	moduleInstanceId        int32
 	moduleInstanceAddress   string
+	moduleInstanceName      string
 	moduleInstanceStart     bool
 	moduleConfig            []string
 )

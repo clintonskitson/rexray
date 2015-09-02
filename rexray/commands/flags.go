@@ -103,6 +103,10 @@ func initModuleFlags() {
 		"address", "a", "",
 		"The network address at which the module will be exposed")
 
+	moduleInstancesCreateCmd.Flags().StringVarP(&moduleInstanceName,
+		"name", "n", "",
+		"The unique name of the module")
+
 	moduleInstancesCreateCmd.Flags().BoolVarP(&moduleInstanceStart,
 		"start", "s", false,
 		"A flag indicating whether or not to start the module upon creation")
