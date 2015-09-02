@@ -34,6 +34,9 @@ type Module interface {
 	// Description is a free-form field ot add descriptive information about
 	// the module instance.
 	Description() string
+
+	// AdapterName is the unique name of the AdapterName
+	AdapterName() string
 }
 
 // Init initializes the module.
@@ -59,8 +62,9 @@ func GetModOptVal(opts map[string]string, key string) string {
 }
 
 type ModuleConfig struct {
-	Address string         `json:"address"`
-	Config  *config.Config `json:"config,omitempty"`
+	Address     string         `json:"address"`
+	AdapterName string         `json:"adapterName"`
+	Config      *config.Config `json:"config,omitempty"`
 }
 
 type ModuleType struct {
@@ -156,8 +160,13 @@ func InitializeModule(
 	defer modInstancesRwl.Unlock()
 
 	lf := log.Fields{
-		"typeId":  modTypeId,
-		"address": modConfig.Address,
+		"typeId":      modTypeId,
+		"address":     modConfig.Address,
+		"adapterName": modConfig.AdapterName,
+	}
+
+	if mod, _ := GetModuleInstance(-1, modConfig.AdapterName, false); mod != nil {
+		return nil, errors.WithFields(lf, "duplicate module adapter name")
 	}
 
 	mt, modTypeExists := modTypes[modTypeId]
@@ -226,12 +235,22 @@ func StartDefaultModules() error {
 	return nil
 }
 
-func GetModuleInstance(modInstId int32) (*ModuleInstance, error) {
-	modInstancesRwl.RLock()
-	defer modInstancesRwl.RUnlock()
+func GetModuleInstance(modInstId int32, adapterName string, lock bool) (*ModuleInstance, error) {
+	if lock {
+		modInstancesRwl.RLock()
+		defer modInstancesRwl.RUnlock()
+	}
+
+	if adapterName != "" {
+		for _, mod := range modInstances {
+			if mod.Config.AdapterName == adapterName {
+				return mod, nil
+			}
+		}
+		return nil, nil
+	}
 
 	mod, modExists := modInstances[modInstId]
-
 	if !modExists {
 		return nil,
 			errors.WithField("id", modInstId, "unknown module instance")
@@ -257,6 +276,7 @@ func StartModule(modInstId int32) error {
 	lf["typeId"] = mod.Type.Id
 	lf["typeName"] = mod.Type.Name
 	lf["address"] = mod.Config.Address
+	lf["name"] = mod.Config.AdapterName
 
 	started := make(chan bool)
 	timeout := make(chan bool)

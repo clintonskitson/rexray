@@ -220,6 +220,7 @@ var moduleInstancesCreateCmd = &cobra.Command{
 			"url":     u,
 			"typeId":  modTypeIdStr,
 			"address": moduleInstanceAddress,
+			"name":    moduleInstanceName,
 			"start":   modInstStartStr,
 			"config":  cfgJson}).Debug("post create module instance")
 
@@ -228,6 +229,7 @@ var moduleInstancesCreateCmd = &cobra.Command{
 			url.Values{
 				"typeId":  {modTypeIdStr},
 				"address": {moduleInstanceAddress},
+				"name":    {moduleInstanceName},
 				"start":   {modInstStartStr},
 				"config":  {cfgJson},
 			})

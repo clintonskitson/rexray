@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
+
 	"github.com/emccode/rexray/daemon/module"
 
 	"github.com/emccode/rexray/config"
@@ -20,17 +22,18 @@ import (
 	"github.com/emccode/rexray/volume"
 )
 
-const MOD_ADDR = "unix:///run/docker/plugins/rexray-local.sock"
+const MOD_ADDR = "unix:///run/docker/plugins/rexray.sock"
 const MOD_PORT = 7980
 const MOD_NAME = "DockerVolumeDriverModule"
 const MOD_DESC = "The REX-Ray Docker VolumeDriver module"
 
 type Module struct {
-	id   int32
-	vdm  *volume.VolumeDriverManager
-	name string
-	addr string
-	desc string
+	id          int32
+	vdm         *volume.VolumeDriverManager
+	name        string
+	addr        string
+	desc        string
+	adapterName string
 }
 
 func init() {
@@ -69,15 +72,17 @@ func Init(id int32, cfg *module.ModuleConfig) (module.Module, error) {
 	}
 
 	return &Module{
-		id:   id,
-		vdm:  vdm,
-		name: MOD_NAME,
-		desc: MOD_DESC,
-		addr: cfg.Address,
+		id:          id,
+		vdm:         vdm,
+		name:        MOD_NAME,
+		desc:        MOD_DESC,
+		addr:        cfg.Address,
+		adapterName: cfg.AdapterName,
 	}, nil
 }
 
 const driverName = "dockervolumedriver"
+const specDir = "/etc/docker/plugins"
 
 var (
 	ErrMissingHost      = errors.New("Missing host parameter")
@@ -107,11 +112,6 @@ func (mod *Module) Start() error {
 		return errors.New(fmt.Sprintf("Invalid protocol %s", proto))
 	}
 
-	if err := os.MkdirAll("/etc/docker/plugins", 0755); err != nil {
-		return err
-	}
-
-	var specPath string
 	var startFunc func() error
 
 	mux := mod.buildMux()
@@ -126,7 +126,6 @@ func (mod *Module) Start() error {
 
 		_ = os.RemoveAll(sockFile)
 
-		specPath = mod.Address()
 		startFunc = func() error {
 			l, lErr := net.Listen("unix", sockFile)
 			if lErr != nil {
@@ -138,7 +137,16 @@ func (mod *Module) Start() error {
 			return http.Serve(l, mux)
 		}
 	} else {
-		specPath = addr
+		if err := os.MkdirAll(specDir, 0755); err != nil {
+			return err
+		}
+
+		specPath := fmt.Sprintf("%s/%s.spec", specDir, mod.AdapterName())
+		writeSpecErr := ioutil.WriteFile(specPath, []byte(mod.Address()), 0644)
+		if writeSpecErr != nil {
+			return writeSpecErr
+		}
+
 		startFunc = func() error {
 			s := &http.Server{
 				Addr:           addr,
@@ -154,15 +162,11 @@ func (mod *Module) Start() error {
 	go func() {
 		sErr := startFunc()
 		if sErr != nil {
-			panic(sErr)
+			// panic(sErr)
+			log.WithField("error", sErr).Error(
+				"failed to ListenAndServe")
 		}
 	}()
-
-	writeSpecErr := ioutil.WriteFile(
-		"/etc/docker/plugins/rexray.spec", []byte(specPath), 0644)
-	if writeSpecErr != nil {
-		return writeSpecErr
-	}
 
 	return nil
 }
@@ -181,6 +185,10 @@ func (mod *Module) Description() string {
 
 func (mod *Module) Address() string {
 	return mod.addr
+}
+
+func (mod *Module) AdapterName() string {
+	return mod.adapterName
 }
 
 func (mod *Module) buildMux() *http.ServeMux {

@@ -3,12 +3,13 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/emccode/rexray/config"
 	"github.com/emccode/rexray/daemon/module"
@@ -156,12 +157,14 @@ func moduleInstGetHandler(w http.ResponseWriter, req *http.Request) {
 func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 	typeId := req.FormValue("typeId")
 	address := req.FormValue("address")
+	name := req.FormValue("name")
 	cfgJson := req.FormValue("config")
 	start := req.FormValue("start")
 
 	log.WithFields(log.Fields{
 		"typeId":  typeId,
 		"address": address,
+		"name":    name,
 		"start":   start,
 		"config":  cfgJson,
 	}).Debug("received module instance post request")
@@ -174,8 +177,9 @@ func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	modConfig := &module.ModuleConfig{
-		Address: address,
-		Config:  cfg,
+		Address:     address,
+		AdapterName: name,
+		Config:      cfg,
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -269,7 +273,7 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 
 	idInt32 := int32(idInt)
 
-	modInst, modInstErr := module.GetModuleInstance(idInt32)
+	modInst, modInstErr := module.GetModuleInstance(idInt32, "", true)
 	if modInstErr != nil {
 		w.Write(jsonError("Unknown module id", modInstErr))
 		log.Printf("Unknown module id ERR: %v\n", modInstErr)
@@ -376,4 +380,8 @@ func (mod *Module) Description() string {
 
 func (mod *Module) Address() string {
 	return mod.addr
+}
+
+func (mod *Module) AdapterName() string {
+	return mod.name
 }

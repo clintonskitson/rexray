@@ -195,6 +195,10 @@ func (mod *Module) Address() string {
 	return mod.addr
 }
 
+func (mod *Module) AdapterName() string {
+	return "temp"
+}
+
 func (mod *Module) buildMux() *http.ServeMux {
 
 	mux := http.NewServeMux()
