@@ -30,8 +30,8 @@ type Module struct {
 }
 
 type JsonError struct {
-	msg string `json:"message"`
-	err error  `json:"error"`
+	Msg string `json:"message"`
+	Err string `json:"error"`
 }
 
 func init() {
@@ -124,13 +124,13 @@ func moduleTypeHandler(w http.ResponseWriter, req *http.Request) {
 	jsonBuf, jsonBufErr := json.MarshalIndent(mods, "", "  ")
 	if jsonBufErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Error servicing request ERR: %v", jsonBufErr)
+		log.Errorf("Error servicing request ERR: %v", jsonBufErr)
 		return
 	}
 
 	_, writeErr := w.Write(jsonBuf)
 	if writeErr != nil {
-		log.Printf("Error writing json buffer ERR: %v", writeErr)
+		log.Errorf("Error writing json buffer ERR: %v", writeErr)
 	}
 }
 
@@ -144,13 +144,13 @@ func moduleInstGetHandler(w http.ResponseWriter, req *http.Request) {
 	jsonBuf, jsonBufErr := json.MarshalIndent(mods, "", "  ")
 	if jsonBufErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Error servicing request ERR: %v", jsonBufErr)
+		log.Errorf("Error servicing request ERR: %v", jsonBufErr)
 		return
 	}
 
 	_, writeErr := w.Write(jsonBuf)
 	if writeErr != nil {
-		log.Printf("Error writing json buffer ERR: %v", writeErr)
+		log.Errorf("Error writing json buffer ERR: %v", writeErr)
 	}
 }
 
@@ -183,14 +183,14 @@ func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 
 	if typeId == "" || address == "" {
 		w.Write(jsonError("Fields typeId and address are required", nil))
-		log.Printf("Fields typeId and address are required\n")
+		log.Error("Fields typeId and address are required\n")
 		return
 	}
 
 	typeIdInt, typeIdIntErr := strconv.ParseInt(typeId, 10, 32)
 	if typeIdIntErr != nil {
 		w.Write(jsonError("Error parsing typeId", typeIdIntErr))
-		log.Printf("Error parsing typeId ERR: %v\n", typeIdIntErr)
+		log.Errorf("Error parsing typeId ERR: %v\n", typeIdIntErr)
 		return
 	}
 
@@ -198,15 +198,16 @@ func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 
 	modInst, initErr := module.InitializeModule(typeIdInt32, modConfig)
 	if initErr != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("Error initializing module ERR: %v\n", initErr)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write(jsonError("Error initializing module", initErr))
+		log.Errorf("Error initializing module ERR: %v\n", initErr)
 		return
 	}
 
 	jsonBuf, jsonBufErr := json.MarshalIndent(modInst, "", "  ")
 	if jsonBufErr != nil {
 		w.Write(jsonError("Error marshalling object to json", jsonBufErr))
-		log.Printf("Error marshalling object to json ERR: %v\n", jsonBufErr)
+		log.Errorf("Error marshalling object to json ERR: %v\n", jsonBufErr)
 		return
 	}
 
@@ -219,7 +220,7 @@ func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 		startErr := module.StartModule(modInst.Id)
 		if startErr != nil {
 			w.Write(jsonError("Error starting module", startErr))
-			log.Printf("Error starting module ERR: %v\n", startErr)
+			log.Errorf("Error starting module ERR: %v\n", startErr)
 			return
 		} else {
 
@@ -227,7 +228,7 @@ func moduleInstPostHandler(w http.ResponseWriter, req *http.Request) {
 			jsonBuf, jsonBufErr = json.MarshalIndent(modInst, "", "  ")
 			if jsonBufErr != nil {
 				w.Write(jsonError("Error marshalling object to json", jsonBufErr))
-				log.Printf("Error marshalling object to json ERR: %v\n", jsonBufErr)
+				log.Errorf("Error marshalling object to json ERR: %v\n", jsonBufErr)
 				return
 			}
 			w.Write(jsonBuf)
@@ -256,7 +257,7 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 	id := vars["id"]
 	if id == "" {
 		w.Write(jsonError("The URL should include the module instance ID", nil))
-		log.Printf("The URL should include the module instance ID\n")
+		log.Errorf("The URL should include the module instance ID\n")
 		return
 	}
 
@@ -264,7 +265,7 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 
 	if idIntErr != nil {
 		w.Write(jsonError("Error parsing id", idIntErr))
-		log.Printf("Error parsing id ERR: %v\n", idIntErr)
+		log.Errorf("Error parsing id ERR: %v\n", idIntErr)
 		return
 	}
 
@@ -273,14 +274,14 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 	modInst, modInstErr := module.GetModuleInstance(idInt32)
 	if modInstErr != nil {
 		w.Write(jsonError("Unknown module id", modInstErr))
-		log.Printf("Unknown module id ERR: %v\n", modInstErr)
+		log.Errorf("Unknown module id ERR: %v\n", modInstErr)
 		return
 	}
 
 	jsonBuf, jsonBufErr := json.MarshalIndent(modInst, "", "  ")
 	if jsonBufErr != nil {
 		w.Write(jsonError("Error marshalling object to json", jsonBufErr))
-		log.Printf("Error marshalling object to json ERR: %v\n", jsonBufErr)
+		log.Errorf("Error marshalling object to json ERR: %v\n", jsonBufErr)
 		return
 	}
 
@@ -293,7 +294,7 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 
 	if startErr != nil {
 		w.Write(jsonError("Error starting moudle", startErr))
-		log.Printf("Error starting module ERR: %v\n", startErr)
+		log.Errorf("Error starting module ERR: %v\n", startErr)
 		return
 	}
 
@@ -301,7 +302,7 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 	jsonBuf, jsonBufErr = json.MarshalIndent(modInst, "", "  ")
 	if jsonBufErr != nil {
 		w.Write(jsonError("Error marshalling object to json", jsonBufErr))
-		log.Printf("Error marshalling object to json ERR: %v\n", jsonBufErr)
+		log.Errorf("Error marshalling object to json ERR: %v\n", jsonBufErr)
 		return
 	}
 
@@ -311,8 +312,8 @@ func moduleInstStartHandler(w http.ResponseWriter, req *http.Request) {
 func jsonError(msg string, err error) []byte {
 	buf, marshalErr := json.MarshalIndent(
 		&JsonError{
-			msg: msg,
-			err: err,
+			Msg: msg,
+			Err: err.Error(),
 		}, "", "  ")
 	if marshalErr != nil {
 		panic(marshalErr)

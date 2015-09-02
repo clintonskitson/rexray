@@ -230,8 +230,17 @@ var moduleInstancesCreateCmd = &cobra.Command{
 				"start":   {modInstStartStr},
 				"config":  {cfgJson},
 			})
+
 		if respErr != nil {
 			panic(respErr)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			remoteErr, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				panic(err)
+			}
+			panic(string(remoteErr))
 		}
 
 		defer resp.Body.Close()

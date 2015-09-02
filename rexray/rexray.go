@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
+	"os"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/emccode/rexray/rexray/commands"
-	"os"
 )
 
 func main() {
@@ -20,6 +22,7 @@ func main() {
 			log.Panic(r)
 		default:
 			log.Debugf("exiting with default error code 1, r=%v", r)
+			fmt.Printf("%v", r)
 			os.Exit(1)
 		}
 	}()
