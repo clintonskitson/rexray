@@ -104,7 +104,7 @@ var volumeCmd = &cobra.Command{
 	Use:   "volume",
 	Short: "The volume manager",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		volumeGet(cmd, args)
 	},
 }
 
@@ -112,7 +112,7 @@ var snapshotCmd = &cobra.Command{
 	Use:   "snapshot",
 	Short: "The snapshot manager",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		snapshotGet(cmd, args)
 	},
 }
 
@@ -120,7 +120,7 @@ var deviceCmd = &cobra.Command{
 	Use:   "device",
 	Short: "The device manager",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		deviceGet(cmd, args)
 	},
 }
 
@@ -156,36 +156,40 @@ var moduleInstancesCmd = &cobra.Command{
 	Use:   "instance",
 	Short: "The module instance manager",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		moduleInstancesList(cmd, args)
 	},
+}
+
+var moduleInstancesList = func(cmd *cobra.Command, args []string) {
+
+	_, addr, addrErr := util.ParseAddress(c.Host)
+	if addrErr != nil {
+		panic(addrErr)
+	}
+
+	u := fmt.Sprintf("http://%s/r/module/instances", addr)
+
+	client := &http.Client{}
+	resp, respErr := client.Get(u)
+	if respErr != nil {
+		panic(respErr)
+	}
+
+	defer resp.Body.Close()
+	body, bodyErr := ioutil.ReadAll(resp.Body)
+	if bodyErr != nil {
+		panic(bodyErr)
+	}
+
+	fmt.Println(string(body))
 }
 
 var moduleInstancesListCmd = &cobra.Command{
 	Use:     "get",
-	Aliases: []string{"list"},
+	Aliases: []string{"list", "ls"},
 	Short:   "List the running module instances",
 	Run: func(cmd *cobra.Command, args []string) {
-
-		_, addr, addrErr := util.ParseAddress(c.Host)
-		if addrErr != nil {
-			panic(addrErr)
-		}
-
-		u := fmt.Sprintf("http://%s/r/module/instances", addr)
-
-		client := &http.Client{}
-		resp, respErr := client.Get(u)
-		if respErr != nil {
-			panic(respErr)
-		}
-
-		defer resp.Body.Close()
-		body, bodyErr := ioutil.ReadAll(resp.Body)
-		if bodyErr != nil {
-			panic(bodyErr)
-		}
-
-		fmt.Println(string(body))
+		moduleInstancesList(cmd, args)
 	},
 }
 
@@ -322,14 +326,14 @@ var adapterCmd = &cobra.Command{
 	Use:   "adapter",
 	Short: "The adapter manager",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Usage()
+		adapterGetInstances(cmd, args)
 	},
 }
 
 var adapterGetTypesCmd = &cobra.Command{
 	Use:     "types",
 	Short:   "List the available adapter types",
-	Aliases: []string{"list"},
+	Aliases: []string{"list", "ls"},
 	Run: func(cmd *cobra.Command, args []string) {
 		drivers := sdm.GetDriverNames()
 		for n := range drivers {
@@ -338,23 +342,27 @@ var adapterGetTypesCmd = &cobra.Command{
 	},
 }
 
+var adapterGetInstances = func(cmd *cobra.Command, args []string) {
+
+	allInstances, err := sdm.GetInstance()
+	if err != nil {
+		panic(err)
+	}
+
+	if len(allInstances) > 0 {
+		yamlOutput, err := yaml.Marshal(&allInstances)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf(string(yamlOutput))
+	}
+}
+
 var adapterGetInstancesCmd = &cobra.Command{
 	Use:   "instances",
 	Short: "List the configured adapter instances",
 	Run: func(cmd *cobra.Command, args []string) {
-
-		allInstances, err := sdm.GetInstance()
-		if err != nil {
-			panic(err)
-		}
-
-		if len(allInstances) > 0 {
-			yamlOutput, err := yaml.Marshal(&allInstances)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf(string(yamlOutput))
-		}
+		adapterGetInstances(cmd, args)
 	},
 }
 
@@ -378,45 +386,53 @@ var volumeMapCmd = &cobra.Command{
 	},
 }
 
-var volumeGetCmd = &cobra.Command{
-	Use:     "get",
-	Short:   "Get one or more volumes",
-	Aliases: []string{"list"},
-	Run: func(cmd *cobra.Command, args []string) {
+var volumeGet = func(cmd *cobra.Command, args []string) {
 
-		allVolumes, err := sdm.GetVolume(volumeID, volumeName)
+	allVolumes, err := sdm.GetVolume(volumeID, volumeName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(allVolumes) > 0 {
+		yamlOutput, err := yaml.Marshal(&allVolumes)
 		if err != nil {
 			log.Fatal(err)
 		}
+		fmt.Printf(string(yamlOutput))
+	}
+}
 
-		if len(allVolumes) > 0 {
-			yamlOutput, err := yaml.Marshal(&allVolumes)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf(string(yamlOutput))
-		}
+var volumeGetCmd = &cobra.Command{
+	Use:     "get",
+	Short:   "Get one or more volumes",
+	Aliases: []string{"list", "ls"},
+	Run: func(cmd *cobra.Command, args []string) {
+		volumeGet(cmd, args)
 	},
+}
+
+var snapshotGet = func(cmd *cobra.Command, args []string) {
+
+	allSnapshots, err := sdm.GetSnapshot(volumeID, snapshotID, snapshotName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if len(allSnapshots) > 0 {
+		yamlOutput, err := yaml.Marshal(&allSnapshots)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf(string(yamlOutput))
+	}
 }
 
 var snapshotGetCmd = &cobra.Command{
 	Use:     "get",
 	Short:   "Get one or more snapshots",
-	Aliases: []string{"list"},
+	Aliases: []string{"list", "ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-
-		allSnapshots, err := sdm.GetSnapshot(volumeID, snapshotID, snapshotName)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if len(allSnapshots) > 0 {
-			yamlOutput, err := yaml.Marshal(&allSnapshots)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf(string(yamlOutput))
-		}
+		snapshotGet(cmd, args)
 	},
 }
 
@@ -571,22 +587,26 @@ var snapshotCopyCmd = &cobra.Command{
 	},
 }
 
+var deviceGet = func(cmd *cobra.Command, args []string) {
+
+	mounts, err := osdm.GetMounts(deviceName, mountPoint)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	yamlOutput, err := yaml.Marshal(&mounts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf(string(yamlOutput))
+}
+
 var deviceGetCmd = &cobra.Command{
 	Use:     "get",
 	Short:   "Get a device's mount(s)",
-	Aliases: []string{"list"},
+	Aliases: []string{"list", "ls"},
 	Run: func(cmd *cobra.Command, args []string) {
-
-		mounts, err := osdm.GetMounts(deviceName, mountPoint)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		yamlOutput, err := yaml.Marshal(&mounts)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf(string(yamlOutput))
+		deviceGet(cmd, args)
 	},
 }
 
