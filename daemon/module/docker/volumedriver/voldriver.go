@@ -2,7 +2,6 @@ package volumedriver
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -12,9 +11,11 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/docker/machine/log"
 	"github.com/emccode/rexray/daemon/module"
 
 	"github.com/emccode/rexray/config"
+	errors "github.com/emccode/rexray/errors"
 	osm "github.com/emccode/rexray/os"
 	"github.com/emccode/rexray/storage"
 	"github.com/emccode/rexray/util"
@@ -212,12 +213,14 @@ func (mod *Module) buildMux() *http.ServeMux {
 		var pr pluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.WithError(err).Error("/VolumeDriver.Create: error decoding json")
 			return
 		}
 
 		err := mod.vdm.Create(pr.Name, pr.Opts)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.WithError(err).Error("/VolumeDriver.Create: error creating volume")
 			return
 		}
 
@@ -229,12 +232,14 @@ func (mod *Module) buildMux() *http.ServeMux {
 		var pr pluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Remove: error decoding json", err))
 			return
 		}
 
 		err := mod.vdm.Remove(pr.Name)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Remove: error removing volume", err))
 			return
 		}
 
@@ -246,12 +251,14 @@ func (mod *Module) buildMux() *http.ServeMux {
 		var pr pluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Path: error decoding json", err))
 			return
 		}
 
 		mountPath, err := mod.vdm.Path(pr.Name, "")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Path: error returning path", err))
 			return
 		}
 
@@ -263,12 +270,14 @@ func (mod *Module) buildMux() *http.ServeMux {
 		var pr pluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Mount: error decoding json", err))
 			return
 		}
 
 		mountPath, err := mod.vdm.Mount(pr.Name, "", false, "")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Mount: error mounting volume", err))
 			return
 		}
 
@@ -280,12 +289,14 @@ func (mod *Module) buildMux() *http.ServeMux {
 		var pr pluginRequest
 		if err := json.NewDecoder(r.Body).Decode(&pr); err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Unmount: error decoding json", err))
 			return
 		}
 
 		err := mod.vdm.Unmount(pr.Name, "")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("{\"Error\":\"%s\"}", err.Error()), 500)
+			log.Error(errors.WithError("/VolumeDriver.Unmount: error unmounting volume", err))
 			return
 		}
 
