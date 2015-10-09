@@ -55,6 +55,15 @@ type secureConfig struct {
 	RackspaceDomainId   string
 	RackspaceDomainName string
 
+	OpenstackAuthUrl    string
+	OpenstackUserId     string
+	OpenstackUserName   string
+	OpenstackTenantId   string
+	OpenstackTenantName string
+	OpenstackDomainId   string
+	OpenstackDomainName string
+	OpenstackRegionName string
+
 	ScaleIoEndpoint             string
 	ScaleIoInsecure             bool
 	ScaleIoUseCerts             bool
@@ -86,6 +95,7 @@ type plainTextConfig struct {
 
 	AwsSecretKey      string
 	RackspacePassword string
+	OpenstackPassword string
 	ScaleIoPassword   string
 	XtremIoPassword   string
 }
