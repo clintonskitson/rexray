@@ -107,6 +107,13 @@ func (m *mod) Start() error {
 		return errors.WithField("protocol", proto, "invalid protocol")
 	}
 
+	if err := m.r.InitDrivers(); err != nil {
+		return errors.WithFieldsE(errors.Fields{
+			"m":   m,
+			"m.r": m.r,
+		}, "error initializing drivers", err)
+	}
+
 	if err := os.MkdirAll("/etc/docker/plugins", 0755); err != nil {
 		return err
 	}
