@@ -63,53 +63,20 @@ func (d *driver) Mount(volumeName, volumeID string, overwriteFs bool, newFsType 
 		"newFsType":   newFsType,
 		"driverName":  d.Name()}).Info("mounting volume")
 
-	if volumeName == "" && volumeID == "" {
-		return "", errors.New("Missing volume name or ID")
-	}
+	var err error
+	var vols []*core.Volume
+	var volAttachments []*core.VolumeAttachment
 
-	instances, err := d.r.Storage.GetInstances()
-	if err != nil {
+	if vols, volAttachments, err = d.prefixToMountUnmount(
+		volumeName, volumeID); err != nil {
 		return "", err
 	}
 
-	switch {
-	case len(instances) == 0:
-		return "", errors.New("No instances")
-	case len(instances) > 1:
-		return "", errors.New("Too many instances returned, limit the storagedrivers")
+	if len(volAttachments) == 0 {
+		return "", nil
 	}
 
-	volumes, err := d.r.Storage.GetVolume(volumeID, volumeName)
-	if err != nil {
-		return "", err
-	}
-
-	switch {
-	case len(volumes) == 0:
-		return "", errors.New("No volumes returned by name")
-	case len(volumes) > 1:
-		return "", errors.New("Multiple volumes returned by name")
-	}
-
-	volumeAttachment, err := d.r.Storage.GetVolumeAttach(
-		volumes[0].VolumeID, instances[0].InstanceID)
-	if err != nil {
-		return "", err
-	}
-
-	if len(volumeAttachment) == 0 {
-		volumeAttachment, err = d.r.Storage.AttachVolume(
-			false, volumes[0].VolumeID, instances[0].InstanceID)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if len(volumeAttachment) == 0 {
-		return "", errors.New("Volume did not attach")
-	}
-
-	mounts, err := d.r.OS.GetMounts(volumeAttachment[0].DeviceName, "")
+	mounts, err := d.r.OS.GetMounts(volAttachments[0].DeviceName, "")
 	if err != nil {
 		return "", err
 	}
@@ -125,11 +92,12 @@ func (d *driver) Mount(volumeName, volumeID string, overwriteFs bool, newFsType 
 		newFsType = "ext4"
 	}
 
-	if err := d.r.OS.Format(volumeAttachment[0].DeviceName, newFsType, overwriteFs); err != nil {
+	if err := d.r.OS.Format(
+		volAttachments[0].DeviceName, newFsType, overwriteFs); err != nil {
 		return "", err
 	}
 
-	mountPath, err := getVolumeMountPath(volumes[0].Name)
+	mountPath, err := getVolumeMountPath(vols[0].Name)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +106,8 @@ func (d *driver) Mount(volumeName, volumeID string, overwriteFs bool, newFsType 
 		return "", err
 	}
 
-	if err := d.r.OS.Mount(volumeAttachment[0].DeviceName, mountPath, "", ""); err != nil {
+	if err := d.r.OS.Mount(
+		volAttachments[0].DeviceName, mountPath, "", ""); err != nil {
 		return "", err
 	}
 
@@ -147,48 +116,26 @@ func (d *driver) Mount(volumeName, volumeID string, overwriteFs bool, newFsType 
 
 // Unmount will perform the steps to unmount and existing volume and detach
 func (d *driver) Unmount(volumeName, volumeID string) error {
+
 	log.WithFields(log.Fields{
 		"volumeName": volumeName,
 		"volumeID":   volumeID,
 		"driverName": d.Name()}).Info("unmounting volume")
-	if volumeName == "" && volumeID == "" {
-		return errors.New("Missing volume name or ID")
-	}
 
-	instances, err := d.r.Storage.GetInstances()
-	if err != nil {
+	var err error
+	var vols []*core.Volume
+	var volAttachments []*core.VolumeAttachment
+
+	if vols, volAttachments, err = d.prefixToMountUnmount(
+		volumeName, volumeID); err != nil {
 		return err
 	}
 
-	switch {
-	case len(instances) == 0:
-		return errors.New("No instances")
-	case len(instances) > 1:
-		return errors.New("Too many instances returned, limit the storagedrivers")
-	}
-
-	volumes, err := d.r.Storage.GetVolume(volumeID, volumeName)
-	if err != nil {
-		return err
-	}
-
-	switch {
-	case len(volumes) == 0:
-		return errors.New("No volumes returned by name")
-	case len(volumes) > 1:
-		return errors.New("Multiple volumes returned by name")
-	}
-
-	volumeAttachment, err := d.r.Storage.GetVolumeAttach(volumes[0].VolumeID, instances[0].InstanceID)
-	if err != nil {
-		return err
-	}
-
-	if len(volumeAttachment) == 0 {
+	if len(volAttachments) == 0 {
 		return nil
 	}
 
-	mounts, err := d.r.OS.GetMounts(volumeAttachment[0].DeviceName, "")
+	mounts, err := d.r.OS.GetMounts(volAttachments[0].DeviceName, "")
 	if err != nil {
 		return err
 	}
@@ -200,12 +147,52 @@ func (d *driver) Unmount(volumeName, volumeID string) error {
 		}
 	}
 
-	err = d.r.Storage.DetachVolume(false, volumes[0].VolumeID, "")
+	err = d.r.Storage.DetachVolume(false, vols[0].VolumeID, "")
 	if err != nil {
 		return err
 	}
 	return nil
+}
 
+func (d *driver) prefixToMountUnmount(
+	volumeName,
+	volumeID string) ([]*core.Volume, []*core.VolumeAttachment, error) {
+	if volumeName == "" && volumeID == "" {
+		return nil, nil, errors.New("Missing volume name or ID")
+	}
+
+	instances, err := d.r.Storage.GetInstances()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	switch {
+	case len(instances) == 0:
+		return nil, nil, errors.New("No instances")
+	case len(instances) > 1:
+		return nil, nil,
+			errors.New("Too many instances returned, limit the storagedrivers")
+	}
+
+	var vols []*core.Volume
+	if vols, err = d.r.Storage.GetVolume(volumeID, volumeName); err != nil {
+		return nil, nil, err
+	}
+
+	switch {
+	case len(vols) == 0:
+		return nil, nil, errors.New("No volumes returned by name")
+	case len(vols) > 1:
+		return nil, nil, errors.New("Multiple volumes returned by name")
+	}
+
+	var volAttachments []*core.VolumeAttachment
+	if volAttachments, err = d.r.Storage.GetVolumeAttach(
+		vols[0].VolumeID, instances[0].InstanceID); err != nil {
+		return nil, nil, err
+	}
+
+	return vols, volAttachments, nil
 }
 
 // Path returns the mounted path of the volume
@@ -274,112 +261,48 @@ func (d *driver) Create(volumeName string, volumeOpts core.VolumeOpts) error {
 		return errors.New("Missing volume name")
 	}
 
-	instances, err := d.r.Storage.GetInstances()
-	if err != nil {
-		return err
-	}
+	var err error
 
-	switch {
-	case len(instances) == 0:
-		return errors.New("No instances")
-	case len(instances) > 1:
-		return errors.New("Too many instances returned, limit the storagedrivers")
-	}
-
-	volumes, err := d.r.Storage.GetVolume("", volumeName)
-	if err != nil {
+	if err = d.createGetInstance(); err != nil {
 		return err
 	}
 
 	for k, v := range volumeOpts {
 		volumeOpts[strings.ToLower(k)] = v
 	}
-
 	newFsType := volumeOpts["newfstype"]
-	overwriteFs, _ := strconv.ParseBool(volumeOpts["overwritefs"])
 
-	switch {
-	case len(volumes) == 1 && !overwriteFs:
+	var overwriteFs bool
+	var volumes []*core.Volume
+
+	volumes, overwriteFs, err = d.createGetVolumes(volumeName, volumeOpts)
+	if err != nil {
+		return err
+	}
+	if volumes == nil {
 		return nil
-	case len(volumes) > 1:
-		return errors.WithField("volumeName", volumeName, "Too many volumes returned")
 	}
 
-	var (
-		ok               bool
-		volumeType       string
-		IOPSi            int
-		sizei            int
-		availabilityZone string
-		optVolumeID      string
-		optSnapshotID    string
-	)
+	volumeType := createInitVolumeType(volumeOpts)
+	IOPS := createInitIOPS(volumeOpts)
+	size := createInitSize(volumeOpts)
+	availabilityZone := createInitAvailabilityZone(volumeOpts)
 
-	if volumeType, ok = volumeOpts["volumetype"]; !ok {
-		volumeType = os.Getenv("REXRAY_DOCKER_VOLUMETYPE")
+	var snapshotID string
+	if snapshotID, err = d.createGetSnapshotID(volumeOpts); err != nil {
+		return err
 	}
 
-	if IOPSs, ok := volumeOpts["iops"]; ok {
-		IOPSi, _ = strconv.Atoi(IOPSs)
-	} else {
-		IOPSi, _ = strconv.Atoi(os.Getenv("REXRAY_DOCKER_IOPS"))
-	}
-	IOPS := int64(IOPSi)
-
-	if sizes, ok := volumeOpts["size"]; ok {
-		sizei, _ = strconv.Atoi(sizes)
-	} else {
-		sizei, _ = strconv.Atoi(os.Getenv("REXRAY_DOCKER_SIZE"))
-	}
-	size := int64(sizei)
-	if size == 0 {
-		size = defaultVolumeSize
-	}
-
-	if availabilityZone, ok = volumeOpts["availabilityzone"]; !ok {
-		availabilityZone = os.Getenv("REXRAY_DOCKER_AVAILABILITYZONE")
-	}
-
-	if optSnapshotName, ok := volumeOpts["snapshotname"]; !ok {
-		optSnapshotID = volumeOpts["snapshotid"]
-	} else {
-		snapshots, err := d.r.Storage.GetSnapshot("", "", optSnapshotName)
-		if err != nil {
-			return err
-		}
-
-		switch {
-		case len(snapshots) == 0:
-			return errors.WithField("optSnapshotName", optSnapshotName, "No snapshots returned")
-		case len(snapshots) > 1:
-			return errors.WithField("optSnapshotName", optSnapshotName, "Too many snapshots returned")
-		}
-
-		optSnapshotID = snapshots[0].SnapshotID
-	}
-
-	if optVolumeName, ok := volumeOpts["volumename"]; !ok {
-		optVolumeID = volumeOpts["volumeid"]
-	} else {
-		volumes, err := d.r.Storage.GetVolume("", optVolumeName)
-		if err != nil {
-			return err
-		}
-
-		switch {
-		case len(volumes) == 0:
-			return errors.WithField("optVolumeName", optVolumeName, "No volumes returned")
-		case len(volumes) > 1:
-			return errors.WithField("optVolumeName", optVolumeName, "Too many volumes returned")
-		}
-
-		optVolumeID = volumes[0].VolumeID
+	var volumeID string
+	if volumeID, err = d.createInitVolumeID(
+		snapshotID, volumeName, volumeOpts); err != nil {
+		return err
 	}
 
 	if len(volumes) == 0 {
-		_, err := d.r.Storage.CreateVolume(
-			false, volumeName, optVolumeID, optSnapshotID, volumeType, IOPS, size, availabilityZone)
-		if err != nil {
+		if _, err = d.r.Storage.CreateVolume(
+			false, volumeName, volumeID, snapshotID,
+			volumeType, IOPS, size, availabilityZone); err != nil {
 			return err
 		}
 	}
@@ -400,6 +323,153 @@ func (d *driver) Create(volumeName string, volumeOpts core.VolumeOpts) error {
 	}
 
 	return nil
+}
+
+func (d *driver) createInitVolumeID(
+	snapshotID, volumeName string,
+	volumeOpts core.VolumeOpts) (string, error) {
+
+	var ok bool
+	var optVolumeName string
+
+	if optVolumeName, ok = volumeOpts["volumename"]; !ok {
+		return volumeOpts["volumeid"], nil
+	}
+
+	var err error
+	var volumes []*core.Volume
+	if volumes, err = d.r.Storage.GetVolume("", optVolumeName); err != nil {
+		return "", err
+	}
+
+	switch {
+	case len(volumes) == 0:
+		return "", errors.WithField(
+			"optVolumeName", optVolumeName, "No volumes returned")
+	case len(volumes) > 1:
+		return "", errors.WithField(
+			"optVolumeName", optVolumeName, "Too many volumes returned")
+	}
+
+	return volumes[0].VolumeID, nil
+}
+
+func (d *driver) createGetSnapshotID(
+	volumeOpts core.VolumeOpts) (string, error) {
+
+	var ok bool
+	var optSnapshotName string
+
+	if optSnapshotName, ok = volumeOpts["snapshotname"]; !ok {
+		return volumeOpts["snapshotid"], nil
+	}
+
+	var err error
+	var snapshots []*core.Snapshot
+
+	if snapshots, err = d.r.Storage.GetSnapshot(
+		"", "", optSnapshotName); err != nil {
+		return "", err
+	}
+
+	switch {
+	case len(snapshots) == 0:
+		return "", errors.WithField(
+			"optSnapshotName", optSnapshotName, "No snapshots returned")
+	case len(snapshots) > 1:
+		return "", errors.WithField(
+			"optSnapshotName", optSnapshotName, "Too many snapshots returned")
+	}
+
+	return snapshots[0].SnapshotID, nil
+}
+
+func (d *driver) createGetInstance() error {
+	var err error
+	var instances []*core.Instance
+
+	if instances, err = d.r.Storage.GetInstances(); err != nil {
+		return err
+	}
+
+	switch {
+	case len(instances) == 0:
+		return errors.New("No instances")
+	case len(instances) > 1:
+		return errors.New(
+			"Too many instances returned, limit the storagedrivers")
+	}
+
+	return nil
+}
+
+func (d *driver) createGetVolumes(
+	volumeName string,
+	volumeOpts core.VolumeOpts) ([]*core.Volume, bool, error) {
+	var err error
+	var volumes []*core.Volume
+
+	if volumes, err = d.r.Storage.GetVolume("", volumeName); err != nil {
+		return nil, false, err
+	}
+
+	overwriteFs, _ := strconv.ParseBool(volumeOpts["overwritefs"])
+
+	switch {
+	case len(volumes) == 1 && !overwriteFs:
+		return nil, overwriteFs, nil
+	case len(volumes) > 1:
+		return nil, overwriteFs, errors.WithField(
+			"volumeName", volumeName, "Too many volumes returned")
+	}
+
+	return volumes, overwriteFs, nil
+}
+
+func createInitVolumeType(volumeOpts core.VolumeOpts) string {
+	var ok bool
+	var volumeType string
+	if volumeType, ok = volumeOpts["volumetype"]; ok {
+		return volumeType
+	}
+	return os.Getenv("REXRAY_DOCKER_VOLUMETYPE")
+}
+
+func createInitIOPS(volumeOpts core.VolumeOpts) int64 {
+	return createInitInt64("iops", "REXRAY_DOCKER_IOPS", volumeOpts)
+}
+
+func createInitSize(volumeOpts core.VolumeOpts) int64 {
+	return createInitInt64("size", "REXRAY_DOCKER_SIZE", volumeOpts)
+}
+
+func createInitInt64(
+	optKey, envVar string,
+	volumeOpts core.VolumeOpts) int64 {
+	var k bool
+	var i int
+	var s string
+	if s, k = volumeOpts[optKey]; k {
+		i, _ = strconv.Atoi(s)
+	} else {
+		i, _ = strconv.Atoi(os.Getenv(envVar))
+	}
+	return int64(i)
+}
+
+func createInitAvailabilityZone(volumeOpts core.VolumeOpts) string {
+	return createInitString(
+		"availabilityzone", "REXRAY_DOCKER_AVAILABILITYZONE", volumeOpts)
+}
+
+func createInitString(optKey, envVar string,
+	volumeOpts core.VolumeOpts) string {
+	var ok bool
+	var s string
+	if s, ok = volumeOpts[optKey]; ok {
+		return s
+	}
+	return os.Getenv(envVar)
 }
 
 // Remove will remove a remote volume
