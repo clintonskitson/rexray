@@ -66,14 +66,23 @@ func (d *driver) Mount(volumeName, volumeID string, overwriteFs bool, newFsType 
 	var err error
 	var vols []*core.Volume
 	var volAttachments []*core.VolumeAttachment
+	var instance *core.Instance
 
-	if vols, volAttachments, err = d.prefixToMountUnmount(
+	if vols, volAttachments, instance, err = d.prefixToMountUnmount(
 		volumeName, volumeID); err != nil {
 		return "", err
 	}
 
 	if len(volAttachments) == 0 {
-		return "", nil
+		volAttachments, err = d.r.Storage.AttachVolume(
+			false, vols[0].VolumeID, instance.InstanceID)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if len(volAttachments) == 0 {
+		return "", errors.New("Volume did not attach")
 	}
 
 	mounts, err := d.r.OS.GetMounts(volAttachments[0].DeviceName, "")
@@ -126,7 +135,7 @@ func (d *driver) Unmount(volumeName, volumeID string) error {
 	var vols []*core.Volume
 	var volAttachments []*core.VolumeAttachment
 
-	if vols, volAttachments, err = d.prefixToMountUnmount(
+	if vols, volAttachments, _, err = d.prefixToMountUnmount(
 		volumeName, volumeID); err != nil {
 		return err
 	}
@@ -154,45 +163,55 @@ func (d *driver) Unmount(volumeName, volumeID string) error {
 	return nil
 }
 
-func (d *driver) prefixToMountUnmount(
-	volumeName,
-	volumeID string) ([]*core.Volume, []*core.VolumeAttachment, error) {
-	if volumeName == "" && volumeID == "" {
-		return nil, nil, errors.New("Missing volume name or ID")
-	}
-
+func (d *driver) getInstance() (*core.Instance, error) {
 	instances, err := d.r.Storage.GetInstances()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	switch {
 	case len(instances) == 0:
-		return nil, nil, errors.New("No instances")
+		return nil, errors.New("No instances")
 	case len(instances) > 1:
-		return nil, nil,
+		return nil,
 			errors.New("Too many instances returned, limit the storagedrivers")
+	}
+
+	return instances[0], nil
+}
+
+func (d *driver) prefixToMountUnmount(
+	volumeName,
+	volumeID string) ([]*core.Volume, []*core.VolumeAttachment, *core.Instance, error) {
+	if volumeName == "" && volumeID == "" {
+		return nil, nil, nil, errors.New("Missing volume name or ID")
+	}
+
+	var instance *core.Instance
+	var err error
+	if instance, err = d.getInstance(); err != nil {
+		return nil, nil, nil, err
 	}
 
 	var vols []*core.Volume
 	if vols, err = d.r.Storage.GetVolume(volumeID, volumeName); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	switch {
 	case len(vols) == 0:
-		return nil, nil, errors.New("No volumes returned by name")
+		return nil, nil, nil, errors.New("No volumes returned by name")
 	case len(vols) > 1:
-		return nil, nil, errors.New("Multiple volumes returned by name")
+		return nil, nil, nil, errors.New("Multiple volumes returned by name")
 	}
 
 	var volAttachments []*core.VolumeAttachment
 	if volAttachments, err = d.r.Storage.GetVolumeAttach(
-		vols[0].VolumeID, instances[0].InstanceID); err != nil {
-		return nil, nil, err
+		vols[0].VolumeID, instance.InstanceID); err != nil {
+		return nil, nil, nil, err
 	}
 
-	return vols, volAttachments, nil
+	return vols, volAttachments, instance, nil
 }
 
 // Path returns the mounted path of the volume
@@ -279,7 +298,8 @@ func (d *driver) Create(volumeName string, volumeOpts core.VolumeOpts) error {
 	if err != nil {
 		return err
 	}
-	if volumes == nil {
+
+	if len(volumes) > 0 {
 		return nil
 	}
 
@@ -417,7 +437,7 @@ func (d *driver) createGetVolumes(
 
 	switch {
 	case len(volumes) == 1 && !overwriteFs:
-		return nil, overwriteFs, nil
+		return volumes, overwriteFs, nil
 	case len(volumes) > 1:
 		return nil, overwriteFs, errors.WithField(
 			"volumeName", volumeName, "Too many volumes returned")

@@ -407,9 +407,11 @@ func (d *driver) createVolume(
 		return &ec2.CreateVolumeResp{}, err
 	}
 
-	if snapshotID, err = d.createVolumeCreateSnapshot(
-		volumeID, snapshotID); err != nil {
-		return &ec2.CreateVolumeResp{}, err
+	if volumeID != "" {
+		if snapshotID, err = d.createVolumeCreateSnapshot(
+			volumeID, snapshotID); err != nil {
+			return &ec2.CreateVolumeResp{}, err
+		}
 	}
 
 	d.createVolumeEnsureAvailabilityZone(&availabilityZone, &server)
