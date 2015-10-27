@@ -238,7 +238,7 @@ func (c *CLI) addOutputFormatFlag(fs *pflag.FlagSet) {
 }
 
 func (c *CLI) updateLogLevel() {
-	switch c.r.Config.LogLevel {
+	switch c.logLevel() {
 	case "panic":
 		log.SetLevel(log.PanicLevel)
 	case "fatal":
@@ -253,10 +253,12 @@ func (c *CLI) updateLogLevel() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	log.WithField("logLevel", c.r.Config.LogLevel).Debug("updated log level")
+	log.WithField("logLevel", c.logLevel()).Debug("updated log level")
 }
 
 func (c *CLI) preRun(cmd *cobra.Command, args []string) {
+
+	c.r.Config.BindFlags()
 
 	if c.cfgFile != "" && util.FileExists(c.cfgFile) {
 		if err := c.r.Config.ReadConfigFile(c.cfgFile); err != nil {
@@ -396,4 +398,12 @@ func (c *CLI) isModuleCmd(cmd *cobra.Command) bool {
 		cmd != c.moduleTypesCmd &&
 		cmd != c.moduleInstancesCmd &&
 		cmd != c.moduleInstancesListCmd
+}
+
+func (c *CLI) logLevel() string {
+	return c.r.Config.GetString("logLevel")
+}
+
+func (c *CLI) host() string {
+	return c.r.Config.GetString("host")
 }

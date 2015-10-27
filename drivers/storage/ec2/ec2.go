@@ -63,10 +63,10 @@ func (d *driver) Init(r *core.RexRay) error {
 	}
 
 	auth := aws.Auth{
-		AccessKey: d.r.Config.AwsAccessKey,
-		SecretKey: d.r.Config.AwsSecretKey,
+		AccessKey: d.r.Config.GetString("aws.accessKey"),
+		SecretKey: d.r.Config.GetString("aws.secretKey"),
 	}
-	region := d.r.Config.AwsRegion
+	region := d.r.Config.GetString("aws.region")
 	if region == "" {
 		region = d.instanceDocument.Region
 	}
@@ -791,8 +791,8 @@ func (d *driver) CopySnapshot(runAsync bool,
 	resp := &ec2.CopySnapshotResp{}
 
 	auth := aws.Auth{
-		AccessKey: d.r.Config.AwsAccessKey,
-		SecretKey: d.r.Config.AwsSecretKey}
+		AccessKey: d.r.Config.GetString("aws.accessKey"),
+		SecretKey: d.r.Config.GetString("aws.secretKey")}
 	destec2Instance := ec2.New(
 		auth,
 		aws.Regions[destinationRegion],

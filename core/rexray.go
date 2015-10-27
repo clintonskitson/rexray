@@ -44,10 +44,14 @@ func (r *RexRay) InitDrivers() error {
 	vd := map[string]VolumeDriver{}
 	sd := map[string]StorageDriver{}
 
+	osDrivers := r.Config.GetStringSlice("OSDrivers")
+	volDrivers := r.Config.GetStringSlice("VolumeDrivers")
+	storDrivers := r.Config.GetStringSlice("StorageDrivers")
+
 	for n, d := range r.drivers {
 		switch td := d.(type) {
 		case OSDriver:
-			if util.StringInSlice(n, r.Config.OSDrivers) {
+			if util.StringInSlice(n, osDrivers) {
 				if err := d.Init(r); err != nil {
 					log.WithFields(log.Fields{
 						"driverName": n,
@@ -57,7 +61,7 @@ func (r *RexRay) InitDrivers() error {
 				od[n] = td
 			}
 		case VolumeDriver:
-			if util.StringInSlice(n, r.Config.VolumeDrivers) {
+			if util.StringInSlice(n, volDrivers) {
 				if err := d.Init(r); err != nil {
 					log.WithFields(log.Fields{
 						"driverName": n,
@@ -67,7 +71,7 @@ func (r *RexRay) InitDrivers() error {
 				vd[n] = td
 			}
 		case StorageDriver:
-			if util.StringInSlice(n, r.Config.StorageDrivers) {
+			if util.StringInSlice(n, storDrivers) {
 				if err := d.Init(r); err != nil {
 					log.WithFields(log.Fields{
 						"driverName": n,

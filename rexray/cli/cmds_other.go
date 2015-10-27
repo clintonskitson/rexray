@@ -54,8 +54,10 @@ func (c *CLI) initOtherFlags() {
 	c.c.PersistentFlags().BoolP(
 		"verbose", "v", false, "Print verbose help information")
 
-	c.c.PersistentFlags().AddFlagSet(c.r.Config.GlobalFlags)
-	c.c.PersistentFlags().AddFlagSet(c.r.Config.AdditionalFlags)
+	// add the flag sets
+	for _, fs := range c.r.Config.FlagSets {
+		c.c.PersistentFlags().AddFlagSet(fs)
+	}
 
 	c.uninstallCmd.Flags().Bool("package", false,
 		"A flag indicating a package manager is performing the uninstallation")

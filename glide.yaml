@@ -24,6 +24,18 @@ import:
     ref:     v0.1.1
     vcs:     git
   - package: github.com/spf13/viper
-    ref:     0e14b4944c2c4974cbea1392a55fbbdd89da6513
+    ref:     support/rexray
     repo:    https://github.com/akutz/viper.git
+    vcs:     git
+  - package: github.com/go-yaml/yaml
+    ref:     support/v2-string-maps
+    repo:    https://github.com/akutz/yaml.git
+    vcs:     git
+  - package: gopkg.in/yaml.v1
+    ref:     support/v2-string-maps
+    repo:    https://github.com/akutz/yaml.git
+    vcs:     git
+  - package: gopkg.in/yaml.v2
+    ref:     support/v2-string-maps
+    repo:    https://github.com/akutz/yaml.git
     vcs:     git
