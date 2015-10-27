@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -241,13 +242,61 @@ func (c *Config) updateFlag(name string, flags *flag.FlagSet) {
 // strings where the key is configuration key's environment variable key and
 // the value is the current value for that key.
 func (c *Config) EnvVars() []string {
-	evArr := make([]string, len(c.v.AllKeys()))
-	for _, k := range c.v.AllKeys() {
-		ek := strings.Replace(strings.ToUpper(k), ".", "_", -1)
-		evArr = append(evArr,
-			fmt.Sprintf("%s=%s", ek, c.v.GetString(k)))
+	as := c.v.AllSettings()
+	ev := make(map[string]string)
+	c.flattenEnvVars("", as, ev)
+
+	var evArr []string
+	for k, v := range ev {
+		evArr = append(evArr, fmt.Sprintf("%s=%s", k, v))
 	}
+
 	return evArr
+}
+
+//flattenEnvVars returns a map of configuration keys coming from a config
+//which may have been nested.
+func (c *Config) flattenEnvVars(pk string, as map[string]interface{}, ev map[string]string) {
+	if pk == "" {
+		pk = "REXRAY"
+	}
+
+	for k, v := range as {
+		sk := fmt.Sprintf("%s_%s", pk, k)
+		switch v.(type) {
+		case string:
+			{
+				ev[strings.ToUpper(sk)] = v.(string)
+			}
+		case []interface{}:
+			{
+				var vArr []string
+				for _, iv := range v.([]interface{}) {
+					vArr = append(vArr, iv.(string))
+				}
+				ev[strings.ToUpper(sk)] = strings.Join(vArr, " ")
+			}
+		case map[string]interface{}:
+			{
+				c.flattenEnvVars(sk, v.(map[string]interface{}), ev)
+			}
+		case bool:
+			{
+				ev[strings.ToUpper(sk)] = fmt.Sprintf("%v", v.(bool))
+			}
+		case int:
+			{
+				ev[strings.ToUpper(sk)] = fmt.Sprintf("%v", v.(int))
+			}
+		default:
+			{
+				panic(fmt.Sprintf("invalid type: %s", reflect.TypeOf(v)))
+			}
+		}
+
+	}
+
+	return
 }
 
 // GetString returns the value associated with the key as a string

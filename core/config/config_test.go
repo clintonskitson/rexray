@@ -113,6 +113,19 @@ func TestToJSON(t *testing.T) {
 	t.Log(strJSON)
 }
 
+func TestToEnvVars(t *testing.T) {
+	newPrefixDir("TestToEnv", t)
+	wipeEnv()
+	Register(testRegistration())
+	c := New()
+
+	fev := c.EnvVars()
+
+	for _, v := range fev {
+		t.Log(v)
+	}
+}
+
 func TestCopy(t *testing.T) {
 	newPrefixDir("TestCopy", t)
 	wipeEnv()
