@@ -1,6 +1,6 @@
 # Amazon EC2
 
-Simplifying storage with scalable compute capacity in the cloud
+Consume any storage you want any time
 
 ---
 
@@ -11,7 +11,7 @@ EC2 driver is made possible by the
 [goamz project](https://github.com/mitchellh/goamz).
 
 ## Configuration
-The following is an example configuration of the AWS EC2 driver.
+The following are all of the parameters for the `AWS EC2` driver in YAML.
 
 ```yaml
 aws:
@@ -30,3 +30,12 @@ To activate the EC2 driver please follow the instructions for
 using `ec2` as the driver name.
 
 ## Examples
+The following is an example of a working configuration for the `AWS EC2` driver.
+
+```yaml
+storageDrivers:
+    - ec2
+aws:
+  accessKey: <your_access_key>
+  secretKey: <your_secret_key>
+```

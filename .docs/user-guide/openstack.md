@@ -10,7 +10,7 @@ The OpenStack driver registers a storage driver named `openstack` with the
 instances.
 
 ## Configuration
-The following is an example configuration of the OpenStack driver.
+The following are all of the parameters for the `OpenStack` driver in YAML.
 
 ```yaml
 openstack:
@@ -36,3 +36,15 @@ To activate the OpenStack driver please follow the instructions for
 using `openstack` as the driver name.
 
 ## Examples
+The following is an example of a working configuration for the `OpenStack` driver.
+
+```yaml
+storageDrivers:
+    - openstack
+openstack:
+    authUrl: https://<your_keystone_host>:35357/v2.0/
+    tenantName: <your_tenant>
+    regionName: <your_region>
+    username: <your_username>
+    password: <your_password>
+```

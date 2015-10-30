@@ -1,6 +1,6 @@
 #ScaleIO
 
-Scale-out with simplified storage management
+Running scale-out block storage as software
 
 ---
 
@@ -9,11 +9,11 @@ The ScaleIO registers a storage driver named `scaleio` with the `REX-Ray`
 driver manager and is used to connect and manage ScaleIO storage.
 
 ## Configuration
-The following is an example configuration of the ScaleIO driver.
+The following are all of the parameters for the `ScaleIO` driver in YAML.
 
 ```yaml
 scaleio:
-    endpoint:             https://domain.com/scalio
+    endpoint:             https://domain.com/scaleio
     insecure:             false
     useCerts:             true
     userName:             admin
@@ -36,3 +36,17 @@ To activate the ScaleIO driver please follow the instructions for
 using `scaleio` as the driver name.
 
 ## Examples
+The following is an example of a working configuration for the `ScaleIO` driver.
+
+```yaml
+storageDrivers:
+    - scaleio
+scaleio:
+    authUrl: https://<your_rest_host>/api
+    insecure: true
+    username: <your_username>
+    password: <your_password>
+    systemName: <your_cluster_system_name>
+    protectionDomainName: <your_protection_domain_name>
+    storagePoolName: <your_storage_pool_name
+```

@@ -10,7 +10,7 @@ The Rackspace driver registers a storage driver named `rackspace` with the
 instances.
 
 ## Configuration
-The following is an example configuration of the Rackspace driver.
+The following are all of the parameters for the `Rackspace` driver in YAML.
 
 ```yaml
 rackspace:
@@ -30,3 +30,14 @@ To activate the Rackspace driver please follow the instructions for
 using `rackspace` as the driver name.
 
 ## Examples
+The following is an example of a working configuration for the `Rackspace` driver.
+
+```yaml
+storageDrivers:
+    - rackspace
+rackspace:
+    authURL:    https://identity.api.rackspacecloud.com/v2.0
+    userName:   <your_username>
+    password:   <your_password>
+    tenantName: <your_tenant_name>
+```
