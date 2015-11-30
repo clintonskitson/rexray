@@ -45,8 +45,9 @@ import (
 	"io"
 	"os"
 
+	"github.com/akutz/gofig"
+
 	"github.com/emccode/rexray/core"
-	"github.com/emccode/rexray/core/config"
 
 	// This blank import loads the drivers package
 	_ "github.com/emccode/rexray/drivers"
@@ -66,7 +67,7 @@ func NewWithEnv(env map[string]string) (*core.RexRay, error) {
 // NewWithConfigFile creates a new REX-Ray instance and configures it with a
 // custom configuration file.
 func NewWithConfigFile(path string) (*core.RexRay, error) {
-	c := config.New()
+	c := gofig.New()
 	if err := c.ReadConfigFile(path); err != nil {
 		return nil, err
 	}
@@ -76,7 +77,7 @@ func NewWithConfigFile(path string) (*core.RexRay, error) {
 // NewWithConfigReader creates a new REX-Ray instance and configures it with a
 // custom configuration stream.
 func NewWithConfigReader(in io.Reader) (*core.RexRay, error) {
-	c := config.New()
+	c := gofig.New()
 	if err := c.ReadConfig(in); err != nil {
 		return nil, err
 	}
@@ -87,5 +88,5 @@ func NewWithConfigReader(in io.Reader) (*core.RexRay, error) {
 // configuration workflow: environment variables followed by global and user
 // configuration files.
 func New() (*core.RexRay, error) {
-	return core.New(config.New()), nil
+	return core.New(gofig.New()), nil
 }

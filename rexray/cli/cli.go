@@ -401,9 +401,9 @@ func (c *CLI) isModuleCmd(cmd *cobra.Command) bool {
 }
 
 func (c *CLI) logLevel() string {
-	return c.r.Config.GetString("logLevel")
+	return c.r.Config.GetString("rexray.logLevel")
 }
 
 func (c *CLI) host() string {
-	return c.r.Config.GetString("host")
+	return c.r.Config.GetString("rexray.host")
 }
