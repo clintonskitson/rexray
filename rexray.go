@@ -6,8 +6,8 @@
 // REX-Ray:
 //
 //     [0]akutz@pax:~$ export REXRAY_STORAGEDRIVERS=ec2
-//     [0]akutz@pax:~$ export AWS_ACCESS_KEY=access_key
-//     [0]akutz@pax:~$ export AWS_SECRET_KEY=secret_key
+//     [0]akutz@pax:~$ export AWS_ACCESSKEY=access_key
+//     [0]akutz@pax:~$ export AWS_SECRETKEY=secret_key
 //     [0]akutz@pax:~$ rexray volume get
 //
 //     - providername: ec2
@@ -32,8 +32,8 @@
 //
 //     r := rexray.NewWithEnv(map[string]string{
 //         "REXRAY_STORAGEDRIVERS": "ec2",
-//         "AWS_ACCESS_KEY": "access_key",
-//         "AWS_SECRET_KEY": "secret_key"})
+//         "AWS_ACCESSKEY": "access_key",
+//         "AWS_SECRETKEY": "secret_key"})
 //
 //     r.InitDrivers()
 //
