@@ -467,7 +467,12 @@ func (d *driver) createVolume(name string, size int64) (*vbox.Medium, error) {
 		return nil, goof.New("name in empty")
 	}
 
-	return d.virtualbox.CreateMedium("vmdk", d.storageLocation(name), size)
+	medium, err := d.virtualbox.CreateMedium("vmdk", d.storageLocation(name), size)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	return medium, err
 }
 
 func (d *driver) removeVolume(volumeID string) error {
