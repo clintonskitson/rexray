@@ -44,7 +44,7 @@ PROD=REX-Ray
 REPO=rexray
 BIN_NAME=rexray
 
-BINTRAY_URL=https://dl.bintray.com/emccode
+BINTRAY_URL=https://dl.bintray.com/clintonskitson
 URL=$BINTRAY_URL/$REPO
 
 SCRIPT_URL=$URL/install
