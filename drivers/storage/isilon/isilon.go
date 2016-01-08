@@ -231,9 +231,20 @@ func (d *driver) CreateVolume(
 	notUsed bool,
 	volumeName, volumeID, snapshotID, NUvolumeType string,
 	NUIOPS, size int64, NUavailabilityZone string) (*core.Volume, error) {
-	log.Println("Start CreateVolume() (", volumeName, ") (", volumeID, ")")
+	fields := eff(map[string]interface{}{
+		"volumeName": volumeName,
+		"volumeId":   volumeID,
+	})
 
-	newIsiVolume, _ := d.client.CreateVolume(volumeName)
+	log.WithFields(fields).Debug("creating volume")
+
+	// log.Println("Start CreateVolume() (", volumeName, ") (", volumeID, ")")
+
+	newIsiVolume, err := d.client.CreateVolume(volumeName)
+	if err != nil {
+		return nil, goof.WithFieldsE(
+			eff(goof.Fields{"volumeName": volumeName}), "error creating volume", err)
+	}
 	volumes, _ := d.GetVolume(newIsiVolume.Name, newIsiVolume.Name)
 
 	return volumes[0], nil
