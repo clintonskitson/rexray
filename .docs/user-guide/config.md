@@ -13,11 +13,111 @@ finally, delving into the details of more advanced settings.
 This section outlines the most common configuration scenarios encountered by
 `REX-Ray`'s users.
 
+The typical configuration is done by creating a configuration file at
+`/etc/rexray/config.yml`.  This file is reviewed when REX-Ray is being used
+interactively through CLI or started as a service.  See the advanced section
+for more information and options for configuration.
+
+### Example without Modules
+The following is an example configuration file that works for the VirtualBox
+driver.  Notice how the VirtualBox specific settings take place in two areas.
+The first is that we must declare `virtualbox` under `storageDrivers` and the second
+is that we have a rooted parameter called `virtualbox` to determine the driver
+specific parameters.  Each driver has documentation that includes details for
+the proper parameter name to use for configuration.
+
+```
+rexray:
+  logLevel: warn
+  storageDrivers:
+  - virtualbox
+virtualbox:
+  endpoint: http://10.0.2.2:18083
+  tls: false
+  volumePath: "/Users/your_user/Repos/vagrant/rexray/Volumes"
+  controllerName: SATA
+```
+
+### Example with Modules
+Modules introduce the ability to have a single `REX-Ray` instance present
+multiple personalities or volume endpoints. This is useful for many reasons.
+If the host you are configuring has access to multiple storage platforms, each
+platform can be configured using individual modules.  The example below
+demonstrates this with VirtualBox.
+
+```
+rexray:
+  logLevel: warn
+  storageDrivers:
+  - virtualbox
+  modules:
+    default-docker:
+      type: docker
+      desc: "The default docker module."
+      host: "unix:///run/docker/plugins/vb1.sock"
+      docker:
+        size: 1
+      virtualbox:
+        endpoint: http://10.0.2.2:18083
+        tls: false
+        volumePath: "/Users/your_user/Repos/vagrant/rexray/Volumes"
+        controllerName: SATA
+    virtualbox2:
+      type: docker
+      desc: "The second docker module."
+      host: "unix:///run/docker/plugins/vb2.sock"
+      virtualbox:
+        endpoint: http://10.0.2.2:18083
+        tls: false
+        volumePath: "/Users/your_user/Repos/vagrant/rexray/Volumes"
+        controllerName: SATA
+```
+
+Notice how all of the modules are specified inside of the `modules`
+section. The `default-docker` module is a static name and is configured to be
+our first module. Following it we specify unique values for `host`. This path is
+important as it represents the endpoint that container runtimes like `Docker`
+can use.  In this case, `vb1` and `vb2` are available through the
+`docker --volume-driver=` parameter.
+
+Additionally we have also introduced a scoped configuration under the
+`default-docker` module as `docker.size`. This is another valuable
+feature of modules where we can specify default behavior for an endpoint while
+still leveraging the same backend platform. A `docker run --volume-driver=vb1`
+command here will create new volumes if the volume name specified does
+not exist at the `vb1` endpoint with a size of `1GB` instead of the default of
+`16GB`.
+
+
 ### Logging
+The `logLevel` parameter can be set by any of the following
+parameters.  The determines the amount of information logged to the session
+in addition to `/var/log/rexray/rexray.log`.
 
-### Drivers
+- panic
+- fatal
+- error
+- warn
+- info
+- debug
 
-### Modules
+### Troubleshooting
+In order to verify the configuration `rexray env` can be used to see the
+runtime interpretation of your file.
+
+```
+./rexray env | grep DEFAULT-DOCKER
+REXRAY_MODULES_DEFAULT-DOCKER_TYPE=docker
+REXRAY_MODULES_DEFAULT-DOCKER_DISABLED=false
+REXRAY_MODULES_DEFAULT-DOCKER_VIRTUALBOX_CONTROLLERNAME=SATA
+REXRAY_MODULES_DEFAULT-DOCKER_DESC=The default docker module.
+REXRAY_MODULES_DEFAULT-DOCKER_HOST=unix:///run/docker/plugins/vb1.sock
+REXRAY_MODULES_DEFAULT-DOCKER_VIRTUALBOX_ENDPOINT=http://10.0.2.2:18083
+REXRAY_MODULES_DEFAULT-DOCKER_VIRTUALBOX_VOLUMEPATH=/Users/your_user/Repos/vagrant/rexray/Volumes
+REXRAY_MODULES_DEFAULT-DOCKER_DOCKER_SIZE=1
+REXRAY_MODULES_DEFAULT-DOCKER_SPEC=/etc/docker/plugins/rexray.spec
+REXRAY_MODULES_DEFAULT-DOCKER_VIRTUALBOX_TLS=false
+```
 
 ## Advanced Configuration
 The following sections detail every last aspect of how `REX-Ray` works and can
