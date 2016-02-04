@@ -1,10 +1,29 @@
-#Configuring REX-Ray
+# Configuring REX-Ray
 
 Tweak this, turn that, peek behind the curtain...
 
 ---
 
-## Data Directories
+## Overview
+This page reviews how to configure `REX-Ray` to suit any environment, beginning
+with the the most common use cases, exploring recommended guidelines, and
+finally, delving into the details of more advanced settings.
+
+## Basic Configuration
+This section outlines the most common configuration scenarios encountered by
+`REX-Ray`'s users.
+
+### Logging
+
+### Drivers
+
+### Modules
+
+## Advanced Configuration
+The following sections detail every last aspect of how `REX-Ray` works and can
+be configured.
+
+### Data Directories
 The first time `REX-Ray` is executed it will create several directories if
 they do not already exist:
 
@@ -42,7 +61,7 @@ a file located inside of `/etc/rexray`, but it should be noted that if
 `REXRAY_HOME` is set the location of the global configuration file can be
 changed.
 
-## Configuration Methods
+### Configuration Methods
 There are three ways to configure `REX-Ray`:
 
 * Command line options
@@ -54,7 +73,7 @@ options set in multiple locations that may override one another. Values set
 via CLI flags have the highest order of precedence, followed by values set by
 environment variables, followed, finally, by values set in configuration files.
 
-## Configuration Files
+### Configuration Files
 There are two `REX-Ray` configuration files - global and user:
 
 * `/etc/rexray/config.yml`
@@ -68,7 +87,7 @@ directory, but rather `/root/.rexray/config.yml`.
 
 The next section has an example configuration with the default configuration.
 
-## Configuration Properties
+### Configuration Properties
 The section [Configuration Methods](#configuration-methods) mentions there are
 three ways to configure REX-Ray: config files, environment variables, and the
 command line. However, this section will illuminate the relationship between the
@@ -140,7 +159,7 @@ Property Name | Environment Variable | CLI Flag
 `aws.secretKey`   | `AWS_SECRETKEY`   | `--awsSecretKey`
 `aws.region`    | `AWS_REGION`   | `--awsRegion`
 
-### String Arrays
+#### String Arrays
 Please note that properties that are represented as arrays in a configuration
 file, such as the `rexray.osDrivers`, `rexray.storageDrivers`, and
 `rexray.volumeDrivers` above, are not arrays, but multi-valued strings where a
@@ -162,7 +181,7 @@ However, to specify the same values in an environment variable,
 `REXRAY_STORAGEDRIVERS="ec2 xtremio"`, and as a CLI flag,
 `--storageDrivers="ec2 xtremio"`.
 
-## Logging Configuration
+### Logging Configuration
 The `REX-Ray` log level determines the level of verbosity emitted by the
 internal logger. The default level is `warn`, but there are three other levels
 as well:
@@ -188,14 +207,14 @@ rexray volume get -l debug
 env REXRAY_LOGLEVEL=debug rexray volume get
 ```
 
-## Driver Configuration
+### Driver Configuration
 There are three types of drivers:
 
   1. OS Drivers
   2. Storage Drivers
   3. Volume Drivers
 
-### OS Drivers
+#### OS Drivers
 Operating system (OS) drivers enable `REX-Ray` to manage storage on
 the underlying OS. Currently the following OS drivers are supported:
 
@@ -206,7 +225,7 @@ Linux   | linux
 The OS driver `linux` is automatically activated when `REX-Ray` is running on
 the Linux OS.
 
-### Storage Drivers
+#### Storage Drivers
 Storage drivers enable `REX-Ray` to communicate with direct-attached or remote
 storage systems. Currently the following storage drivers are supported:
 
@@ -220,7 +239,7 @@ XtremIO | xtremio
 
 The `rexray.storageDrivers` property can be used to activate storage drivers..
 
-### Volume Drivers
+#### Volume Drivers
 Volume drivers enable `REX-Ray` to manage volumes for consumers of the storage,
 such as `Docker` or `Mesos`. Currently the following volume drivers are
 supported:
@@ -231,11 +250,11 @@ Docker   | docker
 
 The volume driver `docker` is automatically activated.
 
-## Module Configuration
+### Module Configuration
 This section reviews exposing multiple, differently configured endpoints by
 using modules.
 
-### Default Modules
+#### Default Modules
 If not explicitly specified in a configuration source, `REX-Ray` always
 considers the following, default modules:
 
@@ -262,7 +281,7 @@ to the loopback IP address by default.
 The second default module, `default-docker`, exposes `REX-Ray` as a Docker
 Volume Plug-in via the specified sock and spec files.
 
-### Additional Modules
+#### Additional Modules
 It's also possible to create additional modules via the configuration file:
 
 ```yaml
@@ -303,7 +322,7 @@ the default isilon settings from the root key, `isilon`. Therefore the modules
 `default-docker` and `isilon2` are configured exactly the same except for they
 are exposed via different sock and spec files.
 
-### Inferred Properties
+#### Inferred Properties
 The following example is nearly identical to the previous one except this
 example is missing the `host`, `spec`, `desc`, and `disabled` properties for
 the `isilon2` module:
@@ -336,7 +355,7 @@ those values will be automatically set to
 `unix:///run/docker/plugins/isilon2.sock` and `/etc/docker/plugins/isilon2.spec`
 respectively.
 
-### Overriding Defaults
+#### Overriding Defaults
 It is also possible to override a default module's configuration. What if it's
 determined the `default-admin` module should be accessible externally and the
 `default-docker` module should use a different sock file? Simply override those
@@ -362,7 +381,7 @@ isilon:
     dataSubnet: 172.17.177.0/24
 ```
 
-### Overriding Inherited Properties
+#### Overriding Inherited Properties
 In all of the module configuration examples so far there has been a root key
 named `isilon` that provides the settings for the storage driver used by the
 modules. Thanks to scoped configuration support and inherited properties, it's
@@ -428,7 +447,7 @@ beneath the key path structure `rexray.modules.isilon2`. Whenever any query is
 made for `rexray.storageDrivers` inside the `isilon2` module, the value
 `[]string{"isilonEnhanced"}` is returned instead of `[]string{"isilon"}`.
 
-### Disabling Modules
+#### Disabling Modules
 Both default and custom modules can be disabled by setting the key `disabled` to
 true inside a module definition:
 
@@ -458,11 +477,11 @@ isilon:
 The above example disables the `default-docker` and `isilon3` modules such that
 `isilon2` is the only Docker module loaded.
 
-## Volume Configuration
+### Volume Configuration
 This section describes various global configuration options related to
 operations such as mounting and unmounting volumes.
 
-### Pre-Emption
+#### Pre-Emption
 There is a capability to pre-emptively detach any existing attachments to other
 instances before attempting a mount.  This will enable use cases for
 availability where another instance must be able to take control of a volume
@@ -496,7 +515,7 @@ VirtualBox|Yes
 VMAX|Not yet
 XtremIO|Yes
 
-### Ignore Used Count
+#### Ignore Used Count
 By default accounting takes place during operations that are performed
 on `Mount`, `Unmount`, and other operations.  This only has impact when running
 as a service through the HTTP/JSON interface since the counts are persisted
@@ -524,7 +543,7 @@ sharing volumes, it is recommended that you reset the service along with the
 accompanying container runtime (if this setting is false) to ensure they are
 synchronized.  
 
-### Volume Path (0.3.1)
+#### Volume Path (0.3.1)
 When volumes are mounted there can be an additional path that is specified to
 be created and passed as the valid mount point.  This is required for certain
 applications that do not want to place data from the root of a mount point.  
@@ -541,7 +560,7 @@ linux:
     rootPath: /data
 ```
 
-### Volume FileMode (0.3.1)
+#### Volume FileMode (0.3.1)
 The permissions of the `linux.volume.rootPath` can be set to default values.  At
 each mount, the permissions will be written based on this value.  The default
 is to include the `0700` mode.
