@@ -17,6 +17,7 @@ import (
 	"github.com/akutz/goof"
 	"github.com/akutz/gotil"
 	"github.com/emccode/libstorage/api/context"
+	"github.com/emccode/libstorage/api/server"
 	apitypes "github.com/emccode/libstorage/api/types"
 	apiutils "github.com/emccode/libstorage/api/utils"
 	apiclient "github.com/emccode/libstorage/client"
@@ -108,6 +109,16 @@ type pluginRequest struct {
 }
 
 func (m *mod) Start() error {
+
+	lsu := fmt.Sprintf("tcp://127.0.0.1:%d", gotil.RandomTCPPort())
+	m.config.Set("libstorage.server.endpoints.localhost.address", lsu)
+	m.config.Set("libstorage.host", lsu)
+
+	_, errs := server.StartWithConfig(m.config)
+	go func() {
+		err := <-errs
+		panic(err)
+	}()
 
 	lsc, err := apiclient.New(m.config)
 	if err != nil {

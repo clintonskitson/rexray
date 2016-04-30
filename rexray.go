@@ -52,12 +52,19 @@ import (
 	_ "github.com/emccode/libstorage/imports/local"
 	_ "github.com/emccode/libstorage/imports/remote"
 	"github.com/emccode/rexray/util"
+	"os"
 )
 
 func init() {
 	gofig.SetGlobalConfigPath(util.EtcDirPath())
 	gofig.SetUserConfigPath(fmt.Sprintf("%s/.rexray", gotil.HomeDir()))
 	gofig.Register(globalRegistration())
+	os.Setenv("LIBSTORAGE_SERVER_HTTP_LOGGING_ENABLED", "true")
+	os.Setenv("LIBSTORAGE_SERVER_HTTP_LOGGING_LOGREQUEST", "true")
+	os.Setenv("LIBSTORAGE_SERVER_HTTP_LOGGING_LOGRESPONSE", "true")
+	os.Setenv("LIBSTORAGE_CLIENT_HTTP_LOGGING_ENABLED", "true")
+	os.Setenv("LIBSTORAGE_CLIENT_HTTP_LOGGING_LOGREQUEST", "true")
+	os.Setenv("LIBSTORAGE_CLIENT_HTTP_LOGGING_LOGRESPONSE", "true")
 }
 
 func globalRegistration() *gofig.Registration {

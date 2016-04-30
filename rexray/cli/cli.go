@@ -16,6 +16,7 @@ import (
 	"gopkg.in/yaml.v1"
 
 	"github.com/emccode/libstorage/api/context"
+	"github.com/emccode/libstorage/api/server"
 	apitypes "github.com/emccode/libstorage/api/types"
 	apiutils "github.com/emccode/libstorage/api/utils"
 	apiclient "github.com/emccode/libstorage/client"
@@ -180,6 +181,10 @@ func NewWithArgs(a ...string) *CLI {
 		config: gofig.New(),
 	}
 
+	lsu := fmt.Sprintf("tcp://127.0.0.1:%d", gotil.RandomTCPPort())
+	c.config.Set("libstorage.server.endpoints.localhost.address", lsu)
+	c.config.Set("libstorage.host", lsu)
+
 	c.c = &cobra.Command{
 		Use:              "rexray",
 		Short:            s,
@@ -336,6 +341,13 @@ func (c *CLI) preRun(cmd *cobra.Command, args []string) {
 		if c.runAsync {
 			c.ctx = c.ctx.WithValue("async", true)
 		}
+
+		_, errs := server.StartWithConfig(c.config)
+		go func() {
+			err := <-errs
+			panic(err)
+		}()
+
 		r, err := apiclient.New(c.config)
 		if err == nil {
 			c.r = r
