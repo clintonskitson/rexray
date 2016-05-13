@@ -198,9 +198,12 @@ func (d *driver) Unmount(volumeName, volumeID string) error {
 	}
 
 	if len(mounts) > 0 {
-		err := d.r.OS.Unmount(mounts[0].Mountpoint)
-		if err != nil {
-			return err
+		for _,mt := range mounts {
+			log.WithField("mountPoint",mt.Mountpoint).Info("unmounting mountpoint")
+			err := d.r.OS.Unmount(mt.Mountpoint)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
