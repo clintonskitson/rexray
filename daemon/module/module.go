@@ -9,8 +9,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/akutz/gofig"
 	"github.com/akutz/goof"
-	"github.com/emccode/libstorage/api/context"
-	apiserver "github.com/emccode/libstorage/api/server"
 	apitypes "github.com/emccode/libstorage/api/types"
 	apiclient "github.com/emccode/libstorage/client"
 
@@ -157,46 +155,14 @@ func InitializeDefaultModules(
 	modTypesRwl.RLock()
 	defer modTypesRwl.RUnlock()
 
-	config = config.Scope("rexray")
+	var (
+		err  error
+		errs <-chan error
+	)
 
-	if !config.IsSet(apitypes.ConfigIgVolOpsMountPath) {
-		config.Set(
-			apitypes.ConfigIgVolOpsMountPath, util.LibFilePath("volumes"))
-	}
-
-	var serverErrChan <-chan error
-
-	if config.GetBool(apitypes.ConfigEmbedded) {
-
-		var (
-			err    error
-			server apitypes.Server
-			errs   <-chan error
-		)
-
-		host, isRunning := util.IsLocalServerActive(ctx, config)
-
-		if isRunning {
-			ctx = ctx.WithValue(context.HostKey, host)
-			ctx.WithField("host", host).Debug(
-				"not starting embeddded server; " +
-					"local server already running")
-		} else {
-			if server, errs, err = apiserver.Serve(ctx, config); err != nil {
-				return nil, err
-			}
-			go func() {
-				if err = <-errs; err != nil {
-					ctx.Error(err)
-				}
-			}()
-			if host == "" {
-				config.Set(apitypes.ConfigHost, server.Addrs()[0])
-			}
-
-			serverErrChan = errs
-		}
-
+	ctx, config, errs, err = util.ActivateLibStorage(ctx, config)
+	if err != nil {
+		return nil, err
 	}
 
 	modConfigs, err := getConfiguredModules(ctx, config)
@@ -222,7 +188,7 @@ func InitializeDefaultModules(
 		}()
 	}
 
-	return serverErrChan, nil
+	return errs, nil
 }
 
 // InitializeModule initializes a module.
